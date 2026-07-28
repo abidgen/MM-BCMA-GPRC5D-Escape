@@ -1,0 +1,44 @@
+# --- Raw data (large, fully regenerable via scripts/01_download_data.sh) ---
+raw/GSE223060_RAW.tar
+raw/GSE223061_RAW.tar
+raw/unpacked/
+raw/unpacked_bulk/
+raw/samples/
+# Keep the small, useful manifest — it documents what was actually downloaded/found
+!raw/sample_manifest.csv
+
+# --- Downstream large binary outputs (regenerable by rerunning the pipeline) ---
+results/*.rds
+results/*.h5
+results/*.h5ad
+# Keep small, presentable outputs — tables and figures are the actual deliverables
+!results/*.csv
+!results/*.png
+!results/*.pdf
+
+# --- R artifacts ---
+.Rhistory
+.RData
+.Rproj.user/
+*.Rproj
+.Rprofile
+
+# --- Python artifacts ---
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+
+# --- Environment / package manager caches ---
+.conda/
+.mamba/
+*.conda
+
+# --- OS / editor cruft ---
+.DS_Store
+Thumbs.db
+.vscode/
+.idea/
+
+# --- Old/backup script versions (already cleaned up, but in case they reappear) ---
+scripts/__*.sh
+scripts/__*.py
