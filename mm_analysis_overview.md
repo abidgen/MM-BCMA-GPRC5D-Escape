@@ -1,12 +1,12 @@
-# What We're Doing, and Why — Plain-Language Overview (Revised)
+# What We're Doing, and Why — Plain-Language Overview
 
-**Revision note:** The original version of this doc assumed raw FASTQ data was available
-for GSE223060/GSE223061 and planned to process it through NCI's SINCLAIR pipeline on
-Biowulf. That assumption was wrong — confirmed directly against NCBI: this BioProject
-(PRJNA924769) has no SRA accession and no raw sequencing reads deposited anywhere
-publicly. What GEO hosts instead is Cell Ranger's *output* — per-sample count matrices —
-bundled as `GSE223060_RAW.tar` (~970 MB, 62 samples). This doc reflects that reality.
-Everything from Stage B onward is unchanged from the original plan.
+**Revision note:** This project was originally built substantially in R (Seurat,
+Harmony, CellChat), reached a working state through QC/doublet-removal on the full
+sample cohort, then was restarted from scratch in Python (scanpy, harmonypy, LIANA+)
+for better fit with the author's primary tooling. Every piece of hard-won knowledge
+about the data itself — file-format quirks, a mixed-reference-build problem, a
+patient-ID mapping gap — carries over unchanged; only the code does not. This doc's
+scientific logic (Stages B through G below) is untouched by that switch.
 
 ---
 
@@ -37,43 +37,37 @@ Pilot study and two internal WashU cohorts), generated specifically to discover 
 therapeutic surface targets in myeloma.
 
 **What's public:** processed, per-sample Cell Ranger output — 62 sample bundles,
-~970 MB total — not raw FASTQ. There is no SRA accession for this data; it was never
-deposited as raw reads. This is a real constraint, not a technical hiccup: it means the
-alignment step (raw reads → per-cell gene counts) was already done by the original
-authors, and you're starting one step downstream of that.
+~970 MB total — not raw FASTQ, and notably not even the *unfiltered* count matrices
+(the ones that include empty droplets). That second point matters more than it might
+sound: a common cleanup step called ambient RNA correction needs those unfiltered
+matrices to work, and without them that step simply isn't available for this dataset.
+We handle that gap differently instead — more on that in Stage D below.
 
 scRNA-seq still means what it always meant: instead of one averaged gene-expression
 readout per tumor sample (bulk RNA-seq), you get a separate readout for every single
 cell in the sample. This still matters here because averaging would hide exactly the
 thing we care about: a small subpopulation of antigen-negative cells sitting inside an
-otherwise antigen-positive tumor. That part of the scientific logic is untouched by
-where the matrices came from.
+otherwise antigen-positive tumor.
 
 ---
 
 ## 3. The pipeline, stage by stage, in plain terms
 
-### Stage A — Get the processed matrices (no alignment needed)
-Since raw reads aren't available, there's no alignment step to run. Each sample's
-Cell Ranger output — the count matrix (rows = genes, columns = cells, values = counts)
-plus the barcode and feature lists that go with it — is downloaded directly from GEO's
-FTP as a single ~970 MB archive, then unpacked per sample. This replaces what would
-otherwise be Biowulf/SINCLAIR's job. No HPC cluster is strictly necessary for this
-project anymore — the full matrix set is small enough to work with on a laptop, though
-keeping it on Biowulf storage for now is fine for convenience.
-
-One thing this stage still needs to do, that SINCLAIR would have handled automatically:
-basic per-sample QC (removing low-quality cells, doublets) and integration across all
-62 samples onto a common coordinate system, correcting for sample-to-sample batch
-effects. This now happens locally in R (Seurat + Harmony) rather than as part of an
-HPC pipeline.
+### Stage A — Get the processed matrices, clean up cell-level quality
+Each sample's Cell Ranger output — the count matrix (rows = genes, columns = cells,
+values = counts) plus barcode and gene lists — is downloaded from GEO and loaded.
+Some cells are broken or dying (leaky membranes, mostly-mitochondrial RNA left behind)
+and get filtered out; some "cells" are actually two cells stuck together in one droplet
+(doublets) and get flagged and removed too. Rather than picking one fixed cutoff number
+for "how broken is too broken," we use a statistical method that looks at the actual
+spread of quality across all the real cells in this dataset and flags anything unusually
+far from the middle of that spread — this adapts to the data instead of imposing an
+arbitrary number that might not fit.
 
 ### Stage B — Figure out what kind of cell each cell is
 Unchanged. A bone marrow sample isn't just tumor — it's tumor cells mixed in with T
 cells, NK cells, normal B cells, myeloid cells, and more. **Annotation** is the step
-where we label each cell by type, based on which genes it's expressing (T cells express
-CD3, plasma cells express CD38 and MZB1, etc.). We use a reference-based tool (SingleR)
-plus a manual marker check as a sanity test.
+where we label each cell by type, based on which genes it's expressing.
 
 ### Stage C — Separate malignant plasma cells from normal ones
 Unchanged. Even after identifying "plasma cells," some are the patient's cancer and
@@ -81,83 +75,212 @@ some are ordinary, healthy plasma cells still in the marrow. You can't tell them
 by looks — you have to use **clonality**. Every antibody-producing cell commits to
 making either a "kappa" or "lambda" light chain, and normal plasma cells are a healthy
 mix of both. Cancer is a single runaway clone, so in an involved marrow, 90%+ of plasma
-cells will share one light chain type. We use that skew to call which cells are
-malignant.
+cells will share one light chain type.
 
 ### Stage D — Score each malignant cell for BCMA and GPRC5D
-Unchanged. Per malignant cell, we check: does this cell express the BCMA gene? The
-GPRC5D gene? Four possible categories per cell — positive for both, positive for one,
-or positive for neither ("double-negative").
+Mostly unchanged, with one refinement. Per malignant cell, we check: does this cell
+express the BCMA gene? The GPRC5D gene? Because we can't do the usual cleanup for
+background contamination (Stage A's note above — plasma cells in particular leak a lot
+of antibody-gene RNA into their surroundings, which can make a truly negative cell look
+faintly positive by mistake), we set the bar for "counts as positive" a little above
+zero — specifically, above whatever background level shows up in cell types that have
+no business expressing these genes at all (T cells, immune cells that aren't plasma
+cells). That gives us a more trustworthy positive/negative call than just checking for
+any signal greater than zero.
+
+### Stage D2 — Make sure the "negative" calls are real
+This is the part that got substantially strengthened in a later design review, and
+it's worth understanding why. The headline number is a **fraction of zeros** — and a
+zero in this kind of data can mean two completely different things. It can mean the
+cell genuinely doesn't express the gene. Or it can mean the measurement simply missed
+it, which happens constantly in single-cell data and is called *dropout*.
+
+Those two failure modes push the answer in opposite directions. Background
+contamination (Stage D) makes truly negative cells look faintly positive, which makes
+the escape fraction look **too small**. Dropout makes truly positive cells look
+negative, which makes it look **too big**. The original plan only accounted for the
+first one. The second is actually the bigger worry here, because GPRC5D is a gene
+that's expressed at low levels even when it *is* expressed, so it's exactly the kind
+of gene the measurement misses.
+
+Rather than pick a number and hope, the analysis now:
+- computes the escape fraction under several different "counts as positive"
+  thresholds, and reports whether the **patient ranking stays the same** across all of
+  them (the ranking surviving is the real result, not any single number);
+- checks whether patients with deeper sequencing get systematically lower escape
+  fractions — if they do, the metric is secretly measuring sequencing depth rather
+  than biology, and that would need to be caught *before* showing anyone the ranking;
+- puts an error bar on every patient, since some patients contribute fifteen times as
+  many cells as others and a bare ranking hides that completely;
+- cross-checks against a **completely separate bulk RNA-seq measurement** of the same
+  samples, which was downloaded at the start of the project and originally unused. If
+  the bulk data shows the antigen where the single-cell data shows nothing, that's
+  direct evidence of how much dropout is happening.
 
 ### Stage E — The novel metric: dual-antigen escape fraction
-Unchanged. For each patient: what fraction of their malignant cells are
-double-negative — i.e., would be invisible to a therapy targeting both BCMA and
-GPRC5D simultaneously. High score = a dual-target CAR-T might still leave disease
-behind. Low score = a dual-target approach should cover nearly the whole tumor.
+For each patient: what fraction of their malignant cells are double-negative — i.e.,
+would be invisible to a therapy targeting both BCMA and GPRC5D simultaneously.
 
-### Stage F — Bring in the immune microenvironment (CellChat)
-Unchanged. Split patients into high-escape-risk and low-escape-risk groups and ask,
-using CellChat, whether the high-risk group also shows weaker immune cell-cell
-signaling.
+### Stage E2 — Is it a *subclone*, or just noise?
+**This is the most important addition, and arguably the real scientific question.**
+
+Saying "3% of this patient's tumor cells are double-negative" and saying "this patient
+already has a 3% resistant subclone" sound identical but aren't. Only the second one
+means anything clinically — because a *subclone* is a coherent group of related cells
+that therapy would actively select for, leaving them to regrow. Cells that just
+happen to be scattered randomly across the tumor are far more likely to be measurement
+noise, and don't predict relapse the same way.
+
+The two situations look different in the data, which is what makes this testable. If
+the double-negative cells cluster together — i.e. they resemble each other, sitting in
+the same neighborhood of "cell similarity space" — that's a real subclone. If they're
+sprinkled at random among ordinary antigen-positive cells, that's the fingerprint of
+dropout. So each patient gets a second number alongside their escape fraction: **how
+clonal is their escape risk**. A patient whose 3% is one tight subclone is a different
+clinical proposition from a patient whose 3% is scattered.
+
+We also look at *what else* is different about those escape cells — what genes they
+turn up or down. One specific hypothesis is written down in advance (so it stays a
+real test and not a story invented after seeing the answer): an enzyme called
+γ-secretase physically cuts BCMA off the surface of myeloma cells, and drugs that
+block it are already being trialed alongside BCMA CAR-T for exactly that reason. If
+the escape cells turn out to be high in the γ-secretase machinery, that points at a
+mechanism *and* an existing intervention.
+
+### Stage F — Bring in the immune microenvironment
+Changed in tool and in statistics. We use LIANA+, a Python tool that includes the same
+underlying method as CellChat (the R tool originally planned) plus several others, so
+the comparison is if anything more robust than relying on one method alone. The
+question: do high-escape-risk patients also show weaker immune cell-cell signaling?
+
+The original plan was to split patients into a high group and a low group and compare
+the two piles of cells. That turns out to be a statistical trap called
+**pseudoreplication** — pooling cells across patients treats one patient's few thousand
+cells as a few thousand independent data points, when really they're all just *one
+patient*. It makes almost anything look significant. So instead each patient gets one
+score, the comparison is across ~41 patients rather than ~181,000 cells, and escape
+risk is used as a sliding scale instead of being chopped into high/low.
+
+There's also an obvious alternative explanation to rule out: maybe high-escape patients
+simply *have* fewer T and NK cells to begin with, in which case "weaker immune
+signaling" is just an artifact of there being fewer immune cells to signal. So immune
+cell abundance gets measured separately and controlled for.
+
+### Stage F2 — What about safety, not just efficacy?
+The healthy bone marrow samples in the dataset were originally going to sit unused.
+They're now doing two jobs.
+
+First, they're a **sanity check on the whole method**. Healthy marrow has no cancer
+clone in it, so when we run the malignant-cell-finding logic on healthy samples, it
+should find nothing. If it "discovers" a tumor in a healthy person, the method is
+broken and every other number is worthless. Cheap test, and it either passes or it
+saves the project.
+
+Second, they tell us whether *normal* plasma cells also carry BCMA and GPRC5D — which
+matters because a CAR-T can't tell the difference. A target that's on the tumor but
+also on healthy tissue causes side effects. This is a real clinical distinction between
+the two antigens: BCMA sits on normal plasma cells and B cells fairly broadly, while
+GPRC5D is more tumor-specific in marrow but shows up in skin and nails, which is where
+the known nail and rash side effects of GPRC5D-targeted drugs come from. Adding this
+turns the project from "which target kills more tumor" into "which target kills more
+tumor *per unit of harm*," which is the actual question.
+
+### Stage F3 — Would a different pair of targets do better?
+Rather than only asking about BCMA and GPRC5D, we score several other candidate myeloma
+targets too and compute, for every possible pair or trio, how much of each patient's
+tumor would be left uncovered. That answers something the two-antigen number
+structurally can't: *for this specific patient, is BCMA + GPRC5D even the right
+combination, or would a different pairing cover more of their disease?* And coverage
+gets weighed against the normal-tissue expression from Stage F2 — covering 100% of the
+tumor isn't a win if the target is also all over healthy tissue.
 
 ### Stage G — The decision packet
-Unchanged. A ranked table of patients by double-negative fraction, a couple of figures,
-and a short written interpretation.
+A ranked table of patients by double-negative fraction — now with **error bars**, since
+a plain bar chart would claim a precision this measurement doesn't have — plus the
+target-coverage comparison, the "is it a subclone" score, the bulk-data cross-check, a
+few figures, and a short written interpretation.
+
+It also states plainly what the analysis *can't* say. The biggest one: CAR-T therapy
+binds to **protein on the cell surface**, and this analysis measures **RNA inside the
+cell**. Those usually track each other, but not perfectly — and for BCMA specifically
+there's a known mechanism that actively strips the protein off the surface while the
+RNA stays put. That's the first thing a knowledgeable person will ask about, so it goes
+in the deliverable rather than waiting to be caught.
 
 ---
 
-## 4. Why this still shows real skill — revised
-
-The original framing leaned on "starts from raw sequencing data" as the headline
-differentiator. That claim no longer applies to this project, and claiming it would be
-inaccurate. Here's what's still true, and worth saying instead:
+## 4. Why this still shows real skill
 
 - **The malignant-cell-calling step still uses biology, not just clustering** —
-  light-chain restriction is a real, defensible method, not a shortcut. This is
-  untouched by where the input matrices came from.
+  light-chain restriction is a real, defensible method, not a shortcut.
 - **The core metric is still something the original dataset's authors didn't
-  compute** — you're not reproducing their paper, you're asking a new question of
-  their data. Also untouched.
-- **It still closes the loop from biology to a business-relevant conclusion** — the
-  output is directly usable for the actual strategic question (single- vs. dual- vs.
-  sequential-target CAR-T design).
-- **New, honest talking point**: you correctly diagnosed a real-world data
-  availability problem — confirmed directly against NCBI's BioProject/SRA records
-  rather than assuming — and adapted the plan accordingly instead of either giving up
-  or claiming to have done something you didn't. That's a legitimate skill to name if
-  asked how the project evolved, and it's a more defensible story than papering over
-  the gap.
-- **What's honestly no longer a differentiator**: going from FASTQ yourself. Don't
-  claim this. If asked directly ("did you process raw sequencing data?"), the accurate
-  answer is: "No — I checked, and this dataset's authors only deposited processed
-  Cell Ranger output, not raw reads. I started from their processed matrices and did
-  all the biology-specific work — QC, integration, malignant cell calling, antigen
-  scoring — myself from there."
+  compute** — this asks a new question of their data, not a reproduction of their paper.
+- **It still closes the loop from biology to a business-relevant conclusion.**
+- **Recognizing and working around real data limitations** — no raw FASTQ, no
+  unfiltered matrices for ambient correction, a mixed-reference-build problem, a
+  patient-ID mapping gap — and documenting each one honestly with a stated mitigation,
+  rather than either ignoring the gap or claiming a workaround fixes it completely.
+- **Auditing your own headline metric and finding it under-defended.** The original
+  plan accounted for one source of error and missed the larger, opposite-signed one
+  (dropout). Catching that in your own design — and then reporting a range and a
+  ranking-stability claim rather than a single confident number — is a more useful
+  signal about how someone works than any individual result.
+- **Distinguishing "3% of cells are negative" from "there's a 3% resistant subclone."**
+  These are easy to conflate and only one of them predicts relapse. Knowing they're
+  different, and knowing they're separable in the data, is the difference between a
+  descriptive number and an actual finding.
+- **Using the unglamorous data.** The matched bulk RNA-seq and the healthy-marrow
+  controls were both already downloaded and both originally slated to sit unused. They
+  turned out to supply the project's only independent validation of its antigen calls
+  and its only handle on safety.
+- **Getting the statistics right on the immune comparison** — treating patients rather
+  than cells as the unit of replication, and controlling for the obvious alternative
+  explanation instead of hoping nobody raises it.
+- **Rebuilding in the tool you're actually fluent in, mid-project, rather than pushing
+  through in a less comfortable one** is itself a reasonable engineering call worth being
+  able to explain plainly if asked — comfort with your tools measurably affects how many
+  bugs you catch versus miss, and that's a real factor, not an excuse.
 
 ---
 
-## 5. What to say if asked "walk me through your approach" in the interview
+## 5. What to say if asked "walk me through your approach" in an interview
 
-Revised, accurate version:
 1. "I wanted to test a question adjacent to Legend's actual antigen-escape problem,
    using open myeloma scRNA-seq data."
-2. "I checked whether raw sequencing data was available for reprocessing, but this
-   dataset's authors only deposited processed Cell Ranger matrices — no FASTQ, no SRA
-   accession. So I started from their processed per-sample matrices and did the
-   biology-specific work myself downstream: QC, batch integration, malignant cell
-   calling, antigen scoring."
+2. "I checked whether raw sequencing data was available, but this dataset's authors
+   only deposited processed, filtered matrices — no FASTQ, no unfiltered counts either.
+   That second gap meant I couldn't run standard ambient-RNA cleanup, so I built a
+   background-noise-derived detection threshold instead, rather than ignoring the issue."
 3. "The key idea is that most antigen-escape work looks at before/after relapse. I
    instead asked how much escape risk is already present in a patient's tumor at
    baseline, before any treatment — by measuring what fraction of the malignant clone
    is negative for both BCMA and GPRC5D at once."
-4. "I tied that back to the immune microenvironment with CellChat, to see whether
-   high-risk patients are also immunologically colder."
-5. "The output is a per-patient ranking that could inform which patients are better
-   candidates for a dual-target vs. sequential-target strategy."
+4. "The number I'm computing is a fraction of zeros, which is the most fragile thing
+   you can measure in single-cell data — a zero is either real biology or a missed
+   measurement. So I bounded both error directions instead of one, reported the
+   ranking as an interval, and validated the antigen calls against matched bulk
+   RNA-seq from the same samples."
+5. "Then the part I actually care about: I tested whether the double-negative cells
+   are a real subclone or just scattered noise, because only a subclone is something
+   therapy would select for. That's the difference between a descriptive percentage
+   and a prediction about relapse."
+6. "I also used the healthy marrow controls to check whether normal plasma cells carry
+   these antigens too — which brings on-target/off-tumor safety into the comparison,
+   not just efficacy."
+7. "I tied that back to the immune microenvironment, testing whether high-risk patients
+   are also immunologically colder — with the patient as the unit of replication, and
+   immune-cell abundance controlled, so it isn't just a composition artifact."
+8. "The output is a per-patient ranking that could inform which patients are better
+   candidates for a dual-target vs. sequential-target strategy — plus a coverage
+   comparison across other candidate targets, in case a different pairing covers a
+   given patient's disease better."
 
-If pressed on why not raw FASTQ: "I looked — this study's authors didn't deposit raw
-reads publicly, only processed matrices, so reprocessing from scratch wasn't an option
-without contacting them directly for access."
+---
 
-That's the whole story, accurately stated — everything else in the technical doc is
-how you'd back it up if asked for detail.
+## 6. Planned next phase — checking whether the finding replicates
+
+Once the primary analysis is fully finished, the plan is to repeat the same logic on a
+second, independent dataset (a different research group, a different lab technology) to
+see whether the core finding shows up there too. This is deliberately sequenced *after*
+finishing the primary analysis — a complete single-dataset analysis is worth more than a
+rushed two-dataset one.

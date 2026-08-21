@@ -1,0 +1,416 @@
+# Multiple Myeloma Dual-Antigen (BCMA/GPRC5D) Coverage & Escape Risk
+## Pipeline Walkthrough (Python rebuild)
+
+**Objective:** For each multiple myeloma patient in GSE223060, quantify the fraction
+of malignant plasma cells that would evade BOTH a BCMA-directed and a
+GPRC5D-directed CAR-T/TCE, then relate that "dual-antigen escape fraction" to the
+immune microenvironment via LIANA+ (CellChat's algorithm, natively reimplemented in
+Python). Output is a per-patient risk ranking usable for a single- vs. dual-target
+CAR-T strategy discussion.
+
+**This document is a narrative walkthrough of the pipeline's logic and reasoning,
+not a copy of the code.** For exact implementation, read `src/mm_escape/` directly
+— this doc intentionally does not duplicate code inline, since exactly that
+duplication caused this file to go stale once already during the R build (an
+earlier version described a monolithic script that had already been split and
+deleted). For current execution state, read `RESUME_HERE.md`. For the settled
+technical decisions and their reasoning, read `CLAUDE.md`. This file answers "what
+does the pipeline do and why," not "what state is it in right now."
+
+**This is a from-scratch Python rebuild.** An earlier R/Seurat version of this
+project reached: data acquisition fully solved, QC/doublet-removal run on the full
+cohort, integration not yet run. No R code carries over; all data-format knowledge
+does — see `CLAUDE.md`'s Data section for the full detail (file-naming quirks,
+reference mismatch, patient-mapping gap). **Before any of the stages below,
+`CLAUDE.md`'s "Repo cleanup" section must be done first** — the old R build's
+scripts and results are removed, only `raw/` and `scripts/01-03` carry over.
+
+**Numbering note:** stage numbers below match notebook filenames and their
+`results/NN_*/` output directory one-to-one (`notebooks/04_qc.ipynb` ->
+`results/04_qc/`, etc.), continuing straight on from `scripts/01-03`. This is
+deliberate — it's the actual mechanism for tracking pipeline order end to end.
+**Number order is execution order** — 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12,
+with no exceptions. Nothing runs out of sequence.
+
+**Scope expansion (2026-08-20).** A design review added a robustness layer and two
+new stages, and the sequence was renumbered so the new stages sit where they
+actually run: escape robustness at 09 and the subclone/phenotype analysis at 10,
+which pushed cell-cell communication to 11 and the decision packet to 12 (the
+packet consumes everything upstream, so it stays last). The reasoning behind each
+addition lives in `CLAUDE.md`; what follows is the narrative version. The
+through-line: the headline metric is a *fraction of zeros*, the noisiest thing
+scRNA-seq measures, and the original plan bounded only one of its two error
+directions.
+
+---
+
+## Stages 01-03 — Data acquisition (`scripts/01_download_data.sh`, `02_check_files.sh`, `03_build_manifest.py`)
+
+Reused unchanged from the R build — pure bash/Python file handling with no R or
+scanpy dependency. Downloads and unpacks `GSE223060_RAW.tar` /
+`GSE223061_RAW.tar` from GEO's FTP, verifies per-sample file structure, and builds
+`raw/sample_manifest.csv` mapping each sample ID to its exact
+`barcodes.tsv`/`genes.tsv`/`counts.mtx` paths.
+
+Status: complete, confirmed working, all 62 samples verified (against the R
+build's run — re-confirm identically in this repo as the very first step).
+
+---
+
+## Stage 04 — QC + doublet detection (`notebooks/04_qc.ipynb`, `src/mm_escape/qc.py`; env: `mm-qc`)
+
+Loads each sample via a custom loader (`src/mm_escape/io.py`) rather than
+`scanpy.read_10x_mtx()`, since this archive's filenames (`counts.mtx`, single-column
+`genes.tsv`) don't match what that convenience function expects.
+
+Computes QC metrics via `scanpy.pp.calculate_qc_metrics`, including
+`pct_counts_in_top_20_genes` — a covariate the R build didn't track. Applies
+MAD-based (median absolute deviation) outlier filtering rather than the R build's
+fixed thresholds (`nFeature_RNA` 200-6000, `percent.mt` < 15), following
+`sc-best-practices.org`'s QC chapter method: flag outliers beyond 5 MADs on
+`log1p_total_counts`, `log1p_n_genes_by_counts`, and `pct_counts_in_top_20_genes`,
+with a separate, tighter check on `pct_counts_mt`. The tutorial's exact numeric
+cutoffs are for a different (healthy PBMC/BMMC) dataset and are not copied
+verbatim — the actual thresholds get re-derived and documented against this
+cohort's own distributions.
+
+Doublet detection uses `scDblFinder` (R), called from Python via an isolated
+`rpy2` bridge contained entirely within the `mm-qc` environment — kept as R
+because it's the benchmarked best-performing method per `sc-best-practices`'s
+cited benchmark (Xi & Li 2021), not swapped to a pure-Python alternative purely
+for language purity.
+
+`56203_1` is excluded here (see `CLAUDE.md`'s Data section — incompatible
+22184-gene reference, missing BCMA entirely; patient 56203 remains covered via
+`56203_2`).
+
+**Ambient RNA correction (SoupX/DecontX) is not run — not an oversight, a hard
+constraint.** Both require the unfiltered Cell Ranger matrix (including empty
+droplets) to estimate the background contamination profile, and GEO only hosts
+the filtered per-sample matrices for this series. The mitigation lives at Stage 08
+(antigen scoring) instead — an empirically-derived noise floor rather than
+formal ambient correction. Worth understanding for plasma-cell data specifically:
+plasma cells secrete enormous quantities of immunoglobulin transcript, making
+ambient contamination of `IGKC`/`IGLC` and potentially the antigen genes
+themselves a real, non-hypothetical concern here — which is also why Stage 07's
+light-chain call is ratio-based rather than presence-based.
+
+**Ambient RNA is only half the problem, though.** It biases in one direction (true
+negatives read as positive, *deflating* the escape fraction). Dropout biases the
+other way — true positives read as zero, *inflating* it — and for this project
+dropout is the larger of the two, because `GPRC5D` is a low-abundance GPCR transcript
+and this cohort's median cell carries only ~2,044 detected genes. Neither bias may be
+left unquantified; Stage 08 and Stage 09 handle the bounding.
+
+Each sample's post-QC AnnData is checkpointed individually — mirrors the R
+build's resumable-per-sample-checkpoint design, which is worth keeping regardless
+of language (an ~8-minute IO-bound load across 61 samples benefits from
+resumability the same way in either stack).
+
+---
+
+## Stage 05 — Gene-space intersection, integration, clustering (`notebooks/05_integration_clustering.ipynb`; env: `mm-core`)
+
+Before any concatenation: intersect gene sets across all retained samples (the
+62 samples split across 33538- and 33694-gene Cell Ranger references, sharing
+22164 genes in common — see `CLAUDE.md`'s Data section for why this must be an
+intersection, never a union). Assert all required marker/antigen genes survive
+the intersection; hard-fail naming the specific missing gene(s) otherwise.
+`anndata.concat(..., join="inner")` performs the actual merge.
+
+Normalize, select highly variable genes, PCA, then `harmonypy` integration keyed
+on `patient_id` (with `n_genes_ref` as an additional covariate) to correct for
+patient-of-origin batch effects. Leiden clustering, UMAP. Includes a diagnostic UMAP
+colored by which reference version (`n_genes_ref`) each cell's sample came from — if
+clusters visibly track that instead of biology, the gene-space intersection failed
+to neutralize processing batch and every downstream antigen call is suspect.
+
+**Integration is deliberately confined to the immune compartment.** Harmonizing on
+`patient_id` is right for T/NK/myeloid cells, which should look alike across
+patients. It is actively risky for the tumor: the malignant clone is patient-private
+by definition, so forcing patients together can blend distinct clones and erase the
+heterogeneity the project exists to measure. So the integrated embedding is used for
+immune annotation and clustering only; **all malignant subclustering happens per
+patient, un-integrated** (stage 10 relies on this). The reassuring part, worth
+stating out loud because it's the obvious objection: **per-cell antigen calls are
+raw counts and never touch the embedding**, so no integration choice can distort the
+escape fractions themselves.
+
+---
+
+## Stage 06 — Cell type annotation (`notebooks/06_annotation.ipynb`; env: `mm-core`)
+
+`celltypist` and/or manual marker-panel scoring (`scanpy.tl.score_genes`) against
+the same panel used in the R build: PlasmaCell (SDC1/CD38/MZB1/XBP1/IRF4), Bcell
+(MS4A1/CD79A/CD19), Tcell (CD3D/CD3E/CD8A/CD4), NK (NCAM1/NKG7/GNLY), Myeloid
+(CD14/LYZ/ITGAM), Erythroid (HBB/GYPA), HSPC (CD34/KIT).
+
+Per-patient composition — malignant-PC fraction of the marrow (tumor burden) and
+T/NK/myeloid abundance — is a **first-class output of this stage**, not a
+by-product. Tumor burden is context for the final packet, and T/NK abundance turns
+out to be the main confounder for Stage 11's central claim, so it has to be measured
+here. Any group comparison of composition uses `scCODA` rather than a per-cell-type
+proportion test: proportions are compositional (they sum to one, so one population
+rising mechanically pushes the others down), and naive tests on them are
+anticonservative.
+
+---
+
+## Stage 07 — Malignant plasma cell identification (`notebooks/07_malignant_calling.ipynb`; env: `mm-core`)
+
+Subset to plasma cell clusters. Clustering alone can't separate malignant from
+residual normal plasma cells — clonality can. Score kappa (`IGKC`) vs. lambda
+(`IGLC1-7`) restriction per cell; the per-patient dominant restriction class
+(>90% in an involved marrow) marks malignant cells, minority-restriction cells
+are residual normal plasma cells. Prefer actual scVDJ-seq/BCR clonotype calls over
+the restriction proxy if any sample turns out to have them (check GEO supplementary
+files — status unconfirmed either way).
+
+This stage got three upgrades in the scope expansion, all driven by one fact: **it
+defines the denominator of the headline metric**, so its mistakes don't stay local —
+they land directly in `frac_double_negative`.
+
+**The restriction call is ratio-based, not presence/absence.** Immunoglobulin
+transcripts are the most ambient-contaminated genes in this entire tissue — plasma
+cells pour Ig mRNA into the droplet background, which is the same reason Stage 04
+flags ambient RNA as a real concern here. A presence-based "does this cell have
+`IGKC`?" call is therefore far noisier than it appears, because a chunk of that
+signal isn't the cell's. A kappa:lambda **ratio** is robust to a shared additive
+background in a way a presence call simply isn't.
+
+**`infercnvpy` is now required rather than optional**, using minority-restriction
+cells as the per-patient normal reference, with the light-chain/CNV **agreement rate
+reported as a stage output**. The reason it can't stay optional: residual normal
+plasma cells express *less* BCMA and GPRC5D than malignant ones, so every normal
+plasma cell wrongly called malignant pushes the escape fraction up. A second,
+independent call is the only way to catch that. A poor agreement rate invalidates
+Stage 08 and stops the pipeline — it isn't something to note and move past.
+
+**The normal bone marrow samples become a negative control.** `BM2/4/5/6` and the
+`ND_*` samples get run through the identical calling logic. Normal marrow is
+polyclonal, so the correct answer is *no malignant cells found*. If the method
+discovers a clone in healthy marrow, the method is broken and everything downstream
+is worthless. This is the cheapest strong validation available for the project's
+most method-dependent step, and it uses samples that were already downloaded and
+doing nothing.
+
+---
+
+## Stage 08 — Antigen scoring + dual-antigen escape fraction (`notebooks/08_antigen_escape_fraction.ipynb`; env: `mm-core`)
+
+Per malignant cell, positivity for BCMA (`TNFRSF17`), GPRC5D, and backup
+candidates (`SLAMF7`, `FCRL5`) — using the empirical ambient-noise-floor threshold
+derived from confidently antigen-negative cell types (T/NK/myeloid), not a naive
+`>0` call (see Stage 04's ambient-RNA note for why this matters more than usual for
+this tissue type). Classifies each cell into `dual_positive`/`BCMA_only`/
+`GPRC5D_only`/`double_negative`.
+
+**The core novel metric**: per patient, `frac_double_negative` = the fraction of
+malignant cells negative for both antigens at once, computed at baseline before
+any treatment — reframing the antigen-escape question from the literature's usual
+before/after-relapse framing into a pre-treatment risk score.
+
+### Defending the metric
+
+A fraction of zeros is the most fragile thing you can compute from scRNA-seq, and
+the original plan bounded only one of the two ways it can go wrong. Both directions
+now get handled here.
+
+The two errors point **opposite ways**. Ambient RNA makes a truly negative cell look
+faintly positive, which *deflates* the escape fraction — that one was already
+documented. Dropout does the reverse: a cell that genuinely expresses the antigen
+reads as zero because the transcript was never captured, which *inflates* it. Dropout
+is the bigger problem here for a specific reason — **`GPRC5D` is a low-abundance GPCR
+transcript**, and this cohort's median cell has only ~2,044 detected genes. A large
+share of "GPRC5D-negative" calls are going to be technical, not biological.
+
+So the stage reports a range, not a number:
+
+- **A threshold sensitivity band.** Compute the metric under at least three calling
+  rules — naive `>0`, the ambient noise floor, and a stricter floor. The claim being
+  made isn't any single value; it's whether the **patient ranking holds** across all
+  three (reported as pairwise Spearman ρ). A ranking that survives every threshold is
+  a finding. One that doesn't is an artifact of a cutoff, and gets said so.
+- **A falsification test for dropout.** Regress each patient's escape fraction
+  against the median UMIs-per-cell of their malignant cells. If that slope is
+  strongly negative, the metric is measuring sequencing depth rather than biology —
+  and that has to be checked *before* the ranking is shown to anyone, not after.
+  Malignant cells are also downsampled to common depth and the metric recomputed.
+- **An expression-matched false-negative floor.** Pick control genes whose expression
+  matches `GPRC5D`'s in malignant cells; their zero-fraction in those same cells is
+  the technical false-negative rate the antigen call can't beat. This turns "GPRC5D
+  is lowly expressed" from a hand-wave into an actual number.
+- **Confidence intervals on every patient.** Bootstrap over each patient's malignant
+  cells. Sample cell counts in this cohort vary about fifteen-fold, so a bare rank
+  ordering claims a precision it doesn't have. A **minimum malignant-cell rule** is
+  declared up front (starting at ≥50 cells) and excluded patients are **named in the
+  output**, never quietly dropped.
+
+### From two antigens to a coverage matrix
+
+`SLAMF7` and `FCRL5` get promoted from "backups" to a real deliverable. For every
+pair and triple across {`TNFRSF17`, `GPRC5D`, `SLAMF7`, `FCRL5`, `CD38`, `SDC1`,
+`ITGB7`}, compute how much of each patient's clone would be left uncovered. This
+answers the question a target-strategy audience actually asks and the two-antigen
+metric structurally cannot: *is BCMA+GPRC5D the best pair for this patient, or would
+BCMA+FCRL5 cover more of their tumor?* Coverage gets traded off against normal-cell
+expression from Stage 09 rather than maximized on its own — a target that covers the
+whole tumor and also hits healthy tissue is not a better target.
+
+**Blocking prerequisite**: `patient_id` mapping is still provisional (a naive rule
+yields 47 disease patients from 57 samples vs. the paper's 41/53) — this must be
+resolved against Supplementary Table S1 before this aggregation runs for real, or
+a single patient's cells could split across duplicate entries, each producing its
+own wrong, partial escape fraction. The working policy is to **proceed provisionally
+rather than stall**, with every S1-dependent number labelled provisional in the
+output file and figure themselves, so a provisional value can't quietly get mistaken
+for a final one.
+
+---
+
+## Stage 09 — Escape robustness (`notebooks/09_escape_robustness.ipynb`; env: `mm-core`)
+
+New stage. Everything in it exists to answer one question: *how do you know your
+escape fractions are real?*
+
+**Matched bulk RNA-seq validation.** GSE223061 — the matched bulk data — was
+downloaded at the very start of the project and then never used by the plan.
+`raw/unpacked_bulk/` holds 30 usable bulk samples overlapping the single-cell cohort
+at roughly 28 samples. For those, compare malignant-cell pseudobulk `TNFRSF17` and
+`GPRC5D` against bulk TPM. Agreement means the antigen quantification is technically
+credible — an orthogonal assay, generated independently, agrees with the per-cell
+calls. Disagreement in one specific direction, **bulk-positive where single-cell
+reads zero**, is direct quantified evidence of dropout, and feeds straight back into
+Stage 08's false-negative floor. Either outcome is informative, which is what makes
+this worth doing. Two of the bulk files are empty 114-byte stubs and three sample
+IDs don't line up cleanly with the single-cell names — both documented in
+`CLAUDE.md`, both to be handled rather than silently absorbed.
+
+**Normal plasma-cell antigen baseline.** Do *normal* plasma cells, from the healthy
+`BM*`/`ND_*` marrow, express BCMA and GPRC5D? This is the step that turns the
+project from a pure efficacy story into **efficacy plus on-target/off-tumor safety**
+— which is the axis that actually distinguishes these two antigens clinically. BCMA
+is broadly expressed on normal plasma cells and B-lineage cells; GPRC5D is more
+tumor-restricted in marrow, but carries the keratinized-tissue expression behind
+talquetamab's nail and skin toxicity. Feeds the coverage-matrix trade-off in Stage 08:
+coverage alone is the wrong thing to maximize.
+
+**Label-permutation null.** Shuffle antigen labels within each patient and recompute
+the escape-fraction distribution. That's what the metric looks like with no signal
+in it; the observed values need to sit clearly outside that null.
+
+---
+
+## Stage 10 — Escape subclone + phenotype (`notebooks/10_escape_subclone_phenotype.ipynb`; env: `mm-core`)
+
+New stage, and the one carrying the project's actual scientific payoff rather than
+another robustness check.
+
+**Is the double-negative population a subclone, or just scattered noise?** This is
+the most important question the project can ask of its own metric. "3% of this
+patient's malignant cells are double-negative" and "this patient carries a
+pre-existing 3% resistant subclone" sound like the same statement and are not — only
+the second one predicts that therapy will *select* for those cells, which is the
+entire clinical premise of measuring baseline escape in the first place.
+
+The two are distinguishable. Per patient, test whether double-negative cells sit
+together in transcriptional space — kNN-neighborhood enrichment or Moran's I on the
+double-negative label, and/or per-patient malignant subclustering with a Fisher test
+for DN enrichment in each subcluster. **Cells scattered at random is the signature of
+dropout; cells clustered together is the signature of a real subclone.** The output
+is a per-patient **clonality-of-escape** score reported next to the escape fraction,
+because a patient whose 3% is concentrated in one coherent subclone is carrying a
+materially different risk from a patient whose 3% is sprinkled at random. This runs
+on the per-patient un-integrated embedding from Stage 05, never the Harmony one — for
+the reason given there.
+
+**What else is different about the escape cells?** Pseudobulk differential expression
+(`pydeseq2`/`decoupler`) of double-negative vs. dual-positive malignant cells, with
+**patient as the unit of replication** — `sc-best-practices` is blunt that per-cell DE
+tests treat cells as independent replicates and badly inflate the false discovery
+rate. Then pathway and TF activity via `decoupler` (Hallmark, PROGENy, CollecTRI).
+
+**One hypothesis is pre-registered: the γ-secretase axis** (`NCSTN`, `PSEN1`,
+`APH1A`, `APH1B`, `PSENEN`). γ-secretase physically cleaves BCMA off the cell
+surface, which is why γ-secretase-inhibitor plus BCMA CAR-T combinations are in
+active clinical development. If escape cells turn out to be γ-secretase-high, that's
+a directly actionable, mechanistically grounded finding rather than a descriptive
+one. It's written down here, before looking, specifically so it stays a hypothesis
+test instead of becoming a post-hoc story.
+
+---
+
+## Stage 11 — Cell-cell communication (`notebooks/11_cellchat_liana.ipynb`; env: `mm-communication`)
+
+Runs LIANA+ using the CellChat-algorithm method specifically (LIANA+ natively
+reimplements it), or optionally the full consensus rank-aggregate across
+CellPhoneDB/CellChat/Connectome/NATMI/SingleCellSignalR — arguably stronger evidence
+than any single method alone, since it's cross-validated across independent
+approaches. The question is whether high-escape-risk patients also show weaker
+NK/T-cell engagement signaling toward malignant plasma cells.
+
+**The statistical design changed in the scope expansion.** The original plan split
+patients into high/low tertiles and compared the two pools. That's
+**pseudoreplication**: pooling cells across patients treats thousands of cells from
+one person as thousands of independent observations, which inflates significance
+essentially arbitrarily. The real sample size is the number of patients (~41), not
+the number of cells (~181,000). So instead:
+
+- Interaction scores are computed **per patient**, making the patient the unit of
+  replication.
+- `frac_double_negative` enters as a **continuous predictor** rather than being
+  binned into tertiles — no arbitrary cutoff, and strictly more power than throwing
+  away the middle third of the cohort.
+- **The confounder gets controlled explicitly.** High-escape patients might simply
+  have fewer T and NK cells to begin with, in which case "weaker immune signaling"
+  is a composition artifact and the finding evaporates. Cell-type abundance from
+  Stage 06 goes in as a covariate, and/or cells are downsampled to equal per-type
+  counts per patient. This one is fatal to the stage's claim if ignored, so it isn't
+  treated as optional polish.
+
+---
+
+## Stage 12 — Final decision packet (`notebooks/12_decision_packet.ipynb`; env: `mm-core`)
+
+The final stage, assembling everything upstream of it. Assembles: the ranked escape-fraction table (annotated with disease stage and
+cytogenetic risk from Supplementary Table S1, once resolved), a UMAP of malignant
+cells colored by `coverage_class` faceted by patient, the LIANA+ differential
+interaction plot, and a short written interpretation of which patients are poor
+candidates for a BCMA/GPRC5D dual-target construct alone.
+
+Changes from the scope expansion:
+
+- **A caterpillar plot with confidence intervals replaces the ranked bar chart.** A
+  bar chart asserts a precision this metric doesn't have; the CIs from Stage 08 are
+  part of the result, not a footnote to it.
+- **The multi-antigen coverage matrix, the clonality-of-escape score, and the
+  bulk-validation correlation** all join the packet — respectively: is there a better
+  target pair for this patient, is their escape risk clonal or scattered, and does an
+  orthogonal assay agree with the single-cell calls.
+- **The bias-direction table** (ambient, dropout, malignant-call error,
+  mRNA-vs-protein, each with its sign on the metric) is included rather than left
+  implicit.
+- **The mRNA-versus-protein limitation is stated explicitly and mechanistically.**
+  CAR-T binds surface protein; this analysis measures transcript. BCMA is actively
+  shed from the surface by γ-secretase, and GPRC5D transcript correlates imperfectly
+  with surface density. This is the first question a target-strategy audience will
+  ask, so it gets answered in the deliverable rather than waited for. If a published
+  CITE-seq or flow calibration exists for these two antigens, quantify against it;
+  otherwise state it plainly.
+- **Decision rules are declared in advance** — which escape-fraction threshold makes
+  a patient a poor dual-target candidate is fixed before the ranking is looked at,
+  not fitted to it afterwards.
+
+---
+
+## Phase 2 — External validation on GSE117156 (not started; sequenced strictly after Phase 1 completes)
+
+Independently re-runs the same pipeline shape (QC -> malignant calling -> antigen
+scoring -> escape fraction) against GSE117156 (Ledergor et al. 2018, *Nat Med* —
+51,840 cells, 11 healthy controls + 29 MM patients spanning asymptomatic disease
+through post-treatment MRD) as a second, independent cohort, testing whether the
+core finding replicates beyond this one dataset and technology.
+
+Full reasoning, acquisition method, and the explicit no-merge constraint (MARS-seq
+vs. 10x — a platform difference, not a correctable batch effect) are documented in
+`CLAUDE.md`'s Phase 2 section, not duplicated here.

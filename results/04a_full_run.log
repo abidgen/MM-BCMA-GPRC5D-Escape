@@ -1,0 +1,203 @@
+[14:46:38] project root : /media/wrath/CART_mm_dual_antigen
+
+[14:46:42] === 04a: load + QC ===
+[14:46:42] Reading manifest: /media/wrath/CART_mm_dual_antigen/raw/sample_manifest.csv
+[14:46:42]   manifest rows: 62
+[14:46:42]   verified 186 referenced files exist
+[14:46:42]   EXCLUDING GSM6939056_56203_1 -- truncated 22184-gene reference; missing TNFRSF17 and IGLC1/2/3
+[14:46:42]   samples: 61 | patients (provisional): 51 | normal BM controls: 4
+[14:46:42]   multi-sample patients: 27522(n=6), 47491(n=2), 58408(n=2), 59114(n=2), 60359(n=2), 81012(n=2)
+[14:46:42]   wrote sample_patient_map_PROVISIONAL.csv -- diff against Table S1 before step 08
+[14:46:42] Reconciling gene sets across 61 samples ...
+[14:46:42]   reference sizes present: 33538 genes (n=37); 33694 genes (n=24)
+[14:46:43]   intersection: 22164 genes (largest reference: 33694)
+[14:46:43]   all 13 required marker/antigen genes present
+[14:46:43] [ 1/61] GSM6939028_MMRF_1695
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:46:49]     raw 1007 -> loaded 1007 -> QC 942 -> singlets 916  (26 doublets, mt median 7.0%)
+[14:46:50] [ 2/61] GSM6939029_MMRF_1325
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:46:54]     raw 509 -> loaded 509 -> QC 494 -> singlets 480  (14 doublets, mt median 7.6%)
+[14:46:55] [ 3/61] GSM6939030_MMRF_1413
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:47:01]     raw 2561 -> loaded 2561 -> QC 2505 -> singlets 2383  (122 doublets, mt median 6.1%)
+[14:47:04] [ 4/61] GSM6939031_MMRF_1537
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:47:10]     raw 3643 -> loaded 3643 -> QC 3470 -> singlets 3262  (208 doublets, mt median 5.3%)
+[14:47:12] [ 5/61] GSM6939032_MMRF_1640
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:47:16]     raw 1867 -> loaded 1862 -> QC 1805 -> singlets 1725  (80 doublets, mt median 6.8%)
+[14:47:18] [ 6/61] GSM6939033_MMRF_1941
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:47:22]     raw 1116 -> loaded 1116 -> QC 1010 -> singlets 976  (34 doublets, mt median 7.5%)
+[14:47:23] [ 7/61] GSM6939034_MMRF_1967
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:47:27]     raw 1131 -> loaded 1131 -> QC 1088 -> singlets 1051  (37 doublets, mt median 7.4%)
+[14:47:28] [ 8/61] GSM6939035_MMRF_2038
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:47:34]     raw 2473 -> loaded 2473 -> QC 2415 -> singlets 2307  (108 doublets, mt median 7.4%)
+[14:47:35] [ 9/61] GSM6939036_MMRF_2168
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:47:40]     raw 1768 -> loaded 1768 -> QC 1643 -> singlets 1573  (70 doublets, mt median 7.0%)
+[14:47:42] [10/61] GSM6939037_MMRF_1267
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:47:47]     raw 2602 -> loaded 2600 -> QC 2553 -> singlets 2433  (120 doublets, mt median 5.9%)
+[14:47:49] [11/61] GSM6939038_MMRF_1686
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:47:53]     raw 974 -> loaded 974 -> QC 926 -> singlets 894  (32 doublets, mt median 6.7%)
+[14:47:54] [12/61] GSM6939039_MMRF_1641
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:47:58]     raw 1624 -> loaded 1624 -> QC 1598 -> singlets 1535  (63 doublets, mt median 6.3%)
+[14:48:00] [13/61] GSM6939040_MMRF_1424
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:48:04]     raw 1952 -> loaded 1952 -> QC 1886 -> singlets 1813  (73 doublets, mt median 7.2%)
+[14:48:06] [14/61] GSM6939041_MMRF_1720
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:48:11]     raw 2731 -> loaded 2725 -> QC 2635 -> singlets 2498  (137 doublets, mt median 5.1%)
+[14:48:13] [15/61] GSM6939042_MMRF_1505
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:48:22]     raw 3753 -> loaded 3752 -> QC 3660 -> singlets 3445  (215 doublets, mt median 2.6%)
+[14:48:26] [16/61] GSM6939043_MMRF_1777
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:48:30]     raw 1036 -> loaded 1036 -> QC 956 -> singlets 925  (31 doublets, mt median 7.0%)
+[14:48:31] [17/61] GSM6939044_MMRF_2251
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:48:42]     raw 4050 -> loaded 4049 -> QC 4041 -> singlets 3778  (263 doublets, mt median 4.3%)
+[14:48:45] [18/61] GSM6939045_MMRF_2259
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:48:50]     raw 2017 -> loaded 2017 -> QC 1947 -> singlets 1864  (83 doublets, mt median 7.3%)
+[14:48:52] [19/61] GSM6939046_25183
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:48:56]     raw 2141 -> loaded 2139 -> QC 2138 -> singlets 2035  (103 doublets, mt median 1.0%)
+[14:48:57] [20/61] GSM6939047_27522_1
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:49:03]     raw 3944 -> loaded 3941 -> QC 3873 -> singlets 3628  (245 doublets, mt median 3.8%)
+[14:49:05] [21/61] GSM6939048_27522_2
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:49:09]     raw 2372 -> loaded 2370 -> QC 2263 -> singlets 2159  (104 doublets, mt median 5.0%)
+[14:49:10] [22/61] GSM6939049_27522_3
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:49:14]     raw 2727 -> loaded 2720 -> QC 2695 -> singlets 2555  (140 doublets, mt median 3.9%)
+[14:49:16] [23/61] GSM6939050_27522_4
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:49:24]     raw 5074 -> loaded 5056 -> QC 5034 -> singlets 4660  (374 doublets, mt median 4.2%)
+[14:49:26] [24/61] GSM6939051_27522_5
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:49:30]     raw 1136 -> loaded 1110 -> QC 1102 -> singlets 1080  (22 doublets, mt median 3.2%)
+[14:49:31] [25/61] GSM6939052_27522_6
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:49:41]     raw 6257 -> loaded 6225 -> QC 5883 -> singlets 5433  (450 doublets, mt median 8.4%)
+[14:49:44] [26/61] GSM6939053_37692_2
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:49:49]     raw 3110 -> loaded 3110 -> QC 3110 -> singlets 2976  (134 doublets, mt median 4.3%)
+[14:49:50] [27/61] GSM6939054_47491_1
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:49:54]     raw 1489 -> loaded 1488 -> QC 1488 -> singlets 1426  (62 doublets, mt median 4.3%)
+[14:49:55] [28/61] GSM6939055_47491_2
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:49:58]     raw 1257 -> loaded 1257 -> QC 1257 -> singlets 1214  (43 doublets, mt median 4.9%)
+[14:49:59] [29/61] GSM6939057_56203_2
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:50:05]     raw 3336 -> loaded 3336 -> QC 3336 -> singlets 3147  (189 doublets, mt median 4.9%)
+[14:50:06] [30/61] GSM6939058_57075_3
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:50:12]     raw 4218 -> loaded 4218 -> QC 4218 -> singlets 3955  (263 doublets, mt median 4.2%)
+[14:50:13] [31/61] GSM6939059_58408_1
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:50:18]     raw 2417 -> loaded 2417 -> QC 2417 -> singlets 2285  (132 doublets, mt median 4.3%)
+[14:50:19] [32/61] GSM6939060_58408_2
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:50:25]     raw 3773 -> loaded 3773 -> QC 3773 -> singlets 3559  (214 doublets, mt median 3.8%)
+[14:50:26] [33/61] GSM6939061_59114_1
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:50:31]     raw 2488 -> loaded 2487 -> QC 2487 -> singlets 2378  (109 doublets, mt median 4.2%)
+[14:50:32] [34/61] GSM6939062_59114_4
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:50:37]     raw 3333 -> loaded 3333 -> QC 3333 -> singlets 3129  (204 doublets, mt median 3.8%)
+[14:50:38] [35/61] GSM6939063_60359_1
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:50:49]     raw 7002 -> loaded 7002 -> QC 7002 -> singlets 6385  (617 doublets, mt median 4.6%)
+[14:50:52] [36/61] GSM6939064_60359_2
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:50:56]     raw 2767 -> loaded 2767 -> QC 2767 -> singlets 2614  (153 doublets, mt median 6.2%)
+[14:50:58] [37/61] GSM6939065_77570
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:51:05]     raw 4130 -> loaded 4129 -> QC 4129 -> singlets 3857  (272 doublets, mt median 5.4%)
+[14:51:06] [38/61] GSM6939066_81012_1
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:51:11]     raw 2643 -> loaded 2643 -> QC 2643 -> singlets 2497  (146 doublets, mt median 4.4%)
+[14:51:12] [39/61] GSM6939067_81012_2
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:51:16]     raw 1380 -> loaded 1379 -> QC 1379 -> singlets 1323  (56 doublets, mt median 4.3%)
+[14:51:16] [40/61] GSM6939068_83942
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:51:28]     raw 6351 -> loaded 6351 -> QC 6351 -> singlets 5861  (490 doublets, mt median 3.7%)
+[14:51:30] [41/61] GSM6939069_MMY18273
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:51:34]     raw 930 -> loaded 930 -> QC 807 -> singlets 784  (23 doublets, mt median 7.2%)
+[14:51:35] [42/61] GSM6939070_MMY21940
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:51:40]     raw 3620 -> loaded 3619 -> QC 3308 -> singlets 3149  (159 doublets, mt median 6.4%)
+[14:51:42] [43/61] GSM6939071_MMY22933
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:51:46]     raw 3200 -> loaded 3200 -> QC 2424 -> singlets 2292  (132 doublets, mt median 9.9%)
+[14:51:47] [44/61] GSM6939072_MMY34339
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:51:51]     raw 866 -> loaded 866 -> QC 654 -> singlets 636  (18 doublets, mt median 9.8%)
+[14:51:52] [45/61] GSM6939073_MMY34600
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:51:59]     raw 4773 -> loaded 4773 -> QC 4430 -> singlets 4138  (292 doublets, mt median 5.6%)
+[14:52:01] [46/61] GSM6939074_MMY40511
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:52:07]     raw 3654 -> loaded 3654 -> QC 3233 -> singlets 3040  (193 doublets, mt median 7.7%)
+[14:52:08] [47/61] GSM6939075_MMY47218
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:52:14]     raw 3160 -> loaded 3160 -> QC 2845 -> singlets 2719  (126 doublets, mt median 6.7%)
+[14:52:15] [48/61] GSM6939076_MMY67868
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:52:22]     raw 4185 -> loaded 4185 -> QC 3972 -> singlets 3735  (237 doublets, mt median 5.6%)
+[14:52:23] [49/61] GSM6939077_MMY70893
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:52:30]     raw 4729 -> loaded 4729 -> QC 4507 -> singlets 4180  (327 doublets, mt median 5.9%)
+[14:52:32] [50/61] GSM6939078_MMY74196
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:52:38]     raw 3637 -> loaded 3637 -> QC 3523 -> singlets 3292  (231 doublets, mt median 5.6%)
+[14:52:39] [51/61] GSM6939079_MMY80649
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:52:46]     raw 3753 -> loaded 3753 -> QC 3654 -> singlets 3435  (219 doublets, mt median 4.9%)
+[14:52:48] [52/61] GSM6939080_MMY83942
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:52:58]     raw 6009 -> loaded 6009 -> QC 5370 -> singlets 5012  (358 doublets, mt median 5.6%)
+[14:53:01] [53/61] GSM6939081_MMY98423
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:53:05]     raw 1378 -> loaded 1378 -> QC 1253 -> singlets 1207  (46 doublets, mt median 6.0%)
+[14:53:06] [54/61] GSM6939082_ND_083017
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:53:14]     raw 5072 -> loaded 5072 -> QC 5072 -> singlets 4666  (406 doublets, mt median 3.3%)
+[14:53:16] [55/61] GSM6939083_ND_090617
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:53:25]     raw 5532 -> loaded 5531 -> QC 5531 -> singlets 5167  (364 doublets, mt median 4.6%)
+[14:53:27] [56/61] GSM6939084_ND_170531
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:53:31]     raw 2661 -> loaded 2661 -> QC 2661 -> singlets 2513  (148 doublets, mt median 2.9%)
+[14:53:32] [57/61] GSM6939085_ND_170607
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:53:37]     raw 2767 -> loaded 2767 -> QC 2767 -> singlets 2609  (158 doublets, mt median 3.4%)
+[14:53:39] [58/61] GSM6939086_BM2
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:53:54]     raw 9328 -> loaded 9306 -> QC 8927 -> singlets 7937  (990 doublets, mt median 6.2%)
+[14:53:58] [59/61] GSM6939087_BM4
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:54:10]     raw 8546 -> loaded 8538 -> QC 7648 -> singlets 6838  (810 doublets, mt median 8.2%)
+[14:54:13] [60/61] GSM6939088_BM5
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:54:23]     raw 7599 -> loaded 7592 -> QC 7082 -> singlets 6374  (708 doublets, mt median 6.6%)
+[14:54:27] [61/61] GSM6939089_BM6
+Warning: Default search for "data" layer in "RNA" assay yielded no results; utilizing "counts" layer instead.
+[14:54:37]     raw 6645 -> loaded 6642 -> QC 6134 -> singlets 5599  (535 doublets, mt median 7.0%)
+There were 50 or more warnings (use warnings() to see the first 50)
+[14:54:40] Wrote qc_summary_per_sample.csv
+[14:54:40] Samples kept: 61/61 | cells retained: 181336 (from 202203 raw)
+[14:54:40] Writing checkpoint 04a_meta.rds ...
+[14:54:40] Writing checkpoint 04a_meta.rds done (0.00 min)
+[14:54:40] 04a done. Next: Rscript scripts/04b_merge_normalize.R

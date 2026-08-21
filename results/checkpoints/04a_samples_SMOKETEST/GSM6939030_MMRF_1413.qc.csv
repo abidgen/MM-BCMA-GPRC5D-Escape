@@ -1,0 +1,2 @@
+"sample_id","patient_id","n_cells_raw","n_cells_loaded","n_cells_thresholded","n_doublets","n_cells_final","median_nFeature","median_percent_mt","status"
+"GSM6939030_MMRF_1413","MMRF_1413",2561,2561,2482,117,2365,1850,5.93277472792064,"kept"

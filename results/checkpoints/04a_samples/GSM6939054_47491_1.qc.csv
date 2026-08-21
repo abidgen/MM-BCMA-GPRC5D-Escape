@@ -1,0 +1,2 @@
+"sample_id","patient_id","n_cells_raw","n_cells_loaded","n_cells_thresholded","n_doublets","n_cells_final","median_nFeature","median_percent_mt","status"
+"GSM6939054_47491_1","47491",1489,1488,1488,62,1426,807,4.30834144593626,"kept"
