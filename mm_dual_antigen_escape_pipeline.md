@@ -5,8 +5,11 @@
 of malignant plasma cells that would evade BOTH a BCMA-directed and a
 GPRC5D-directed CAR-T/TCE, then relate that "dual-antigen escape fraction" to the
 immune microenvironment via LIANA+ (CellChat's algorithm, natively reimplemented in
-Python). Output is a per-patient risk ranking usable for a single- vs. dual-target
-CAR-T strategy discussion.
+Python). Output is a per-patient **risk-tier table** — robust-high / uncertain /
+robust-low, with co-escape enrichment, incremental coverage gain and DN coherence as
+separate columns — usable for a single- vs. dual- vs. sequential-target CAR-T strategy
+discussion. Deliberately not a rank ordering: the confidence intervals overlap too
+heavily for ordinal positions to carry meaning (see Stage 12).
 
 **This document is a narrative walkthrough of the pipeline's logic and reasoning,
 not a copy of the code.** For exact implementation, read `src/mm_escape/` directly
@@ -354,13 +357,18 @@ So the stage reports a range, not a number:
     ~2.5 expected DN cells at n=50, ~5 at n=100, ~10 at n=200 — so expect it to land
     nearer **100-200**. The procedure is unchanged: inspect the distribution, fix the
     threshold, *then* look at the results.
-  - **Bootstrap hierarchically where the design is hierarchical (2026-08-21).** Cells
-    within a patient aren't independent draws, and several patients contribute multiple
-    samples (`27522_1`…`_6` and others). A flat cell-level bootstrap treats sample-level
-    batch variation as biological spread and reports intervals that are too narrow.
-    Resample **patient → sample → cell** where a patient has multiple samples, and
-    report both intervals so the inflation is visible. Correct nesting is S1-gated, so
-    this stays provisional alongside every other per-patient aggregate.
+  - **Bootstrap at the right level (corrected 2026-08-21).** Cells within a patient
+    aren't independent draws, and several patients contribute multiple samples
+    (`27522_1`…`_6` and others); a flat cell-level bootstrap treats sample-level batch
+    variation as biological spread and reports intervals that are too narrow. An earlier
+    draft said **patient → sample → cell** for the per-patient CI — wrong level, because
+    a CI *for patient A* conditions on patient A, so patient is fixed rather than
+    random. Use **sample → cell within patient** for per-patient CIs, and
+    **patient → sample → cell** only for cohort-level quantities (mean escape,
+    regression coefficients, distributions). For single-sample patients this collapses
+    to a cell bootstrap that cannot see sample-level variation at all, so their
+    intervals are optimistic relative to multi-sample patients — stated with the
+    results, not buried. Correct nesting is S1-gated, so this stays provisional.
 
 ### Co-negativity enrichment — the key derived metric (added 2026-08-21)
 
@@ -372,10 +380,25 @@ double-negatives against the independence expectation
 
 This splits three facts the single metric fuses together: how often each antigen is
 individually absent, how many cells are DN, and whether the *same* cells are
-disproportionately losing both. A patient at 6% DN ≈ 0.3 × 0.2 has two independent
-partial failures, and a second binder helps them. A patient at 6% DN with a 4×
-enrichment ratio has a coordinated antigen-low phenotype that a second binder does not
-solve — and that is the patient Stage 10 then goes looking for a mechanism behind.
+disproportionately losing both.
+
+**What it does not mean (corrected 2026-08-21).** An earlier draft said an enriched
+patient is one "a second binder does not solve". That overstates it. Adding GPRC5D to
+BCMA moves the uncovered fraction from `P(BCMA⁻)` to `P(BCMA⁻ ∩ GPRC5D⁻)`: at 30%
+BCMA⁻ / 20% GPRC5D⁻ under independence, 30% → 6%; with enrichment pushing DN to 15%,
+30% → 15%. Less than independence promised, but still halving the escape population.
+Enrichment measures **how much of the pair's expected complementarity is eroded by
+correlated loss** — not whether the second target is worth adding.
+
+**So report incremental coverage gain beside it**, which is the quantity a target
+decision actually turns on and is free off the same 2×2:
+
+    gain from adding GPRC5D to BCMA  =  P(BCMA⁻)   − P(BCMA⁻ ∩ GPRC5D⁻)
+    gain from adding BCMA to GPRC5D  =  P(GPRC5D⁻) − P(BCMA⁻ ∩ GPRC5D⁻)
+
+Enrichment is a claim about biology (is loss correlated); incremental gain is a claim
+about value (what the second target buys). A patient can score high on both — they are
+not in tension — which is exactly why they stay separate columns.
 
 **The null must be depth-conditioned, or this measures library size.** Dropout is a
 per-*cell* property: a shallow cell reads zero for *both* genes, so depth heterogeneity
@@ -388,16 +411,32 @@ each cell's `P(BCMA⁻)` and `P(GPRC5D⁻)` are functions of its own depth), and
 the unconditioned ratio alongside** — the gap between the two *is* the artifact,
 quantified.
 
-### A probabilistic layer alongside the binary call (added 2026-08-21)
+### The detection curve — and what it cannot deliver (corrected 2026-08-21)
 
-The binary positive/negative call stays primary and is what Stages 10-12 consume, but
-the underlying biology is `P(truly expressed | counts, depth, background)` and the
-threshold band alone doesn't capture that. Fit a detection curve on the
-expression-matched control genes already selected for the false-negative floor —
-detection probability as a function of cell depth and gene mean — assign each observed
-zero an approximate `P(false zero)`, and sum per-cell `P_i(BCMA⁻) · P_i(GPRC5D⁻)`. No
-generative model needed. Each patient then carries three numbers: **observed DN**, the
-**threshold-robust interval**, and the **dropout-adjusted expectation**.
+An earlier draft proposed a "dropout-adjusted expected DN" as
+`Σ_i P_i(BCMA⁻) · P_i(GPRC5D⁻)`. **That formula is circular** — multiplying the two
+marginals assumes exactly the independence the co-escape test exists to interrogate, so
+a tumor with genuinely correlated loss would be "corrected" toward the null it violates.
+
+Two consequences. First, a simplification: the "dropout-adjusted DN" and the "expected
+DN under depth-conditioned independence" are **the same number**, specified twice. It is
+reported once, as the **depth-adjusted DN expectation under conditional independence** —
+a technical baseline to compare against, never a corrected truth.
+
+Second, and stated plainly: **no dropout-corrected DN point estimate is produced.**
+Dropout is *bounded* here — threshold sensitivity band, expression-matched
+false-negative floor, depth regression, downsampling — not corrected. Observed DN
+remains the point estimate, reported as an interval. That is a stronger position than
+shipping a number whose correction rests on an assumption the project is simultaneously
+testing.
+
+The detection curve itself is still built (detection probability vs. cell depth and gene
+mean, fit on the expression-matched controls): it is what makes the depth-conditioned
+null quantitative rather than rank-based, and what turns "GPRC5D is lowly expressed"
+into a number. A genuinely dropout-corrected DN would need a latent-class model over the
+four true states with per-cell detection probabilities, fit by EM over the observed 2×2 —
+which estimates the joint without assuming independence. Real work, not on the critical
+path, filed so it is neither reinvented casually nor mistaken for an oversight.
 
 **Imputation and denoising (MAGIC, scVI, ALRA) are forbidden for positivity calls.**
 They manufacture low-level expression by borrowing from neighboring cells, and whether

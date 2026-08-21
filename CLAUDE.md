@@ -101,21 +101,31 @@ present them as if they were. Descending order of centrality:
 
 1. **Primary question** — how heterogeneous is baseline malignant-cell coverage by
    BCMA and GPRC5D across MM patients?
-2. **Primary metric** — threshold-robust dual-negative fraction, with uncertainty.
-3. **Key derived metric** — is dual-negativity enriched beyond independent antigen
-   loss (depth-conditioned)?
-4. **Reliability** — depth/downsampling, expression-matched controls, bulk antigen
+2. **Individual antigen loss** — how often is each target absent on its own?
+3. **Primary metric** — threshold-robust dual-negative fraction, with uncertainty.
+4. **Clinical value of the second target** — incremental coverage gain,
+   `P(A⁻) − P(A⁻ ∩ B⁻)`. Promoted above co-escape (2026-08-21): it is the quantity a
+   single- vs. dual-target decision actually turns on, and it stays positive and
+   material even when loss is correlated.
+5. **Key derived metric** — is dual-negativity enriched beyond independent antigen
+   loss (depth-conditioned)? I.e. how much of the pair's expected complementarity is
+   eroded by correlated loss.
+6. **Reliability** — depth/downsampling, expression-matched controls, bulk antigen
    abundance, normal-PC baseline.
-5. **Biological significance** — are DN cells transcriptionally coherent?
-6. **Stronger clonal evidence** — does the DN population align with CNV-defined
-   malignant substructure?
-7. **Mechanism** — which programs distinguish DN cells (γ-secretase, MYC, OXPHOS,
+7. **Biological significance** — are DN cells transcriptionally coherent?
+8. **Stronger clonal evidence** — does the DN population align with CNV-defined
+   malignant substructure, where that is evaluable?
+9. **Mechanism** — which programs distinguish DN cells (γ-secretase, MYC, OXPHOS,
    stress)?
-8. **Generalization** — does the pattern reproduce independently in GSE117156?
-9. **Exploratory extension** — does escape heterogeneity track immune composition and
-   signaling (stage 11)?
+10. **Generalization** — does the pattern reproduce independently in GSE117156?
+11. **Exploratory extension** — does escape heterogeneity track immune composition and
+    signaling (stage 11)?
 
-Stage 11 is ninth, not co-equal with the antigen analysis. Presenting it as co-equal is
+Read as a sentence: *how much dual targeting adds, where it still fails, whether those
+failures occur together beyond technical expectation, and whether the residual
+population has coherent biology.*
+
+Stage 11 is last, not co-equal with the antigen analysis. Presenting it as co-equal is
 what turns this into a kitchen-sink scRNA project; it is framed as exploratory unless
 the signal is strong and stable — see stage 11.
 
@@ -1082,24 +1092,54 @@ single threshold is not a defensible deliverable:
     as written — inspect the per-patient malignant-cell distribution, fix the
     threshold, *then* look at the ranking — and patients below it are reported
     descriptively rather than ranked.
-  - **Bootstrap hierarchically where the design is hierarchical (added 2026-08-21).**
+  - **Bootstrap hierarchically — but at the right level (corrected 2026-08-21).**
     Cells within a patient are not independent draws, and several patients contribute
-    multiple samples (`27522_1`…`_6`, `47491_1/2`, and the rest). A flat cell-level
-    bootstrap treats sample-level batch variation as if it were biological spread and
-    reports CIs that are too narrow. Resample **patient → sample → cell** where a
-    patient has multiple samples, and report the flat and sample-aware intervals side
-    by side so the inflation is visible. Fully correct nesting is S1-gated (it needs
-    the real sample→patient map), so this is provisional until S1 lands, like every
-    other per-patient aggregate here.
+    multiple samples (`27522_1`…`_6`, `47491_1/2`, and the rest); a flat cell-level
+    bootstrap treats sample-level batch variation as biological spread and reports CIs
+    that are too narrow. An earlier draft said to resample **patient → sample → cell**
+    for the per-patient CI. **That is the wrong level**: a CI *for patient A* is
+    conditional on patient A, so patient is fixed, not random, and resampling patients
+    answers a different question. The correct split:
+
+    | quantity | resampling scheme |
+    |---|---|
+    | **per-patient CI** on `frac_double_negative` | **sample → cell**, within that patient |
+    | **cohort-level** inference (mean escape, regression coefficients, distributions) | **patient → sample → cell** |
+
+    Report the flat and sample-aware per-patient intervals side by side so the
+    narrowing is visible. **For the many patients with a single sample this reduces to
+    a cell bootstrap, which cannot see sample-level technical or biological variation
+    at all** — their CIs are therefore optimistic in a way multi-sample patients' are
+    not, and that asymmetry is stated with the ranking rather than buried. Correct
+    nesting is S1-gated (it needs the real sample→patient map), so this is provisional
+    until S1 lands, like every other per-patient aggregate here.
 - **Multi-antigen combinatorial coverage matrix (new).** `SLAMF7`/`FCRL5` are
   promoted from "backups" to a deliverable. For every pair and triple over
   {`TNFRSF17`, `GPRC5D`, `SLAMF7`, `FCRL5`, `CD38`, `SDC1`, `ITGB7`}, compute the
   uncovered fraction of each patient's clone. This answers the question a
   target-strategy audience actually asks — *is BCMA+GPRC5D the best pair for this
   patient, or would BCMA+FCRL5 cover more?* — which the two-antigen metric alone
-  cannot. Coverage is traded off against normal-cell expression from stage 09, not
-  maximized blindly: a target that covers 100% of the tumor and also hits normal
-  tissue is not a better target.
+  cannot.
+
+  **Report it as separate columns; do NOT collapse it into a utility score
+  (2026-08-21).** The same discipline that keeps DN fraction, co-escape and coherence
+  apart at stage 12 applies here. A weighted `coverage − λ · exposure` needs a
+  principled λ, and there isn't one — the weights would encode a clinical judgement
+  the data cannot supply, while hiding the inputs that a reader could otherwise
+  disagree with. Per pair/triple, per patient:
+
+  | column | source |
+  |---|---|
+  | uncovered fraction | this stage |
+  | incremental gain vs. the best single target | this stage, `P(A⁻) − P(A⁻ ∩ B⁻)` |
+  | co-loss enrichment | this stage, depth-conditioned |
+  | **normal *marrow* expression** | stage 09 |
+
+  The last column is normal **marrow** expression specifically — not "normal tissue",
+  which this dataset cannot observe. Coverage is read against it rather than maximized
+  blindly: a target covering 100% of the tumor that also hits normal marrow plasma
+  cells is not a better target. Extra-marrow liabilities (GPRC5D in keratinized tissue)
+  stay a cited external caveat, never a measured column.
 - **The bias table** (in the QC methodology section above) is authored as a figure
   here and referenced from stage 12.
 
@@ -1118,9 +1158,35 @@ and compare the observed DN fraction against the independence expectation
 separates three facts the single metric fuses into one: how often each antigen is
 individually absent, how many cells are DN, and whether the *same* cells are
 disproportionately losing both. A patient at 6% DN ≈ 0.3 × 0.2 has two independent
-partial failures — adding a second binder helps them. A patient at 6% DN with a 4×
-enrichment ratio has a coordinated antigen-low phenotype that a dual-target construct
-does not solve, and that is the patient stage 10 then investigates mechanistically.
+partial failures; a patient at 6% DN against a 1.5% independence expectation has a
+coordinated antigen-low phenotype, and is the one stage 10 then investigates
+mechanistically.
+
+**What co-escape enrichment does NOT mean (corrected 2026-08-21).** An earlier draft
+said an enriched patient "is the one dual targeting doesn't help", and that co-escape
+"determines whether a second binder helps at all". **Both overstate it, and the
+arithmetic shows why.** Adding GPRC5D to BCMA moves the uncovered fraction from
+`P(BCMA⁻)` to `P(BCMA⁻ ∩ GPRC5D⁻)`. At 30% BCMA⁻ / 20% GPRC5D⁻ under independence that
+is 30% → 6%. With co-loss enrichment pushing DN to 15%, it is 30% → 15% — less than
+independence promised, but still halving the escape population. Enrichment measures
+**how much of the two targets' expected complementarity is eroded by correlated loss**,
+not whether the second target is worth adding. Use that framing everywhere: it is both
+more precise and more useful to a target-strategy audience than the binary claim it
+replaces.
+
+**Incremental coverage gain — reported alongside (added 2026-08-21).** Co-escape
+enrichment is a statement about *biology* (is loss correlated); the clinical question is
+a statement about *value* (what does the second target buy). Different quantities, both
+cheap off the same 2×2:
+
+    gain from adding GPRC5D to BCMA  =  P(BCMA⁻)   − P(BCMA⁻ ∩ GPRC5D⁻)
+    gain from adding BCMA to GPRC5D  =  P(GPRC5D⁻) − P(BCMA⁻ ∩ GPRC5D⁻)
+
+Report both per patient with CIs, as separate columns. A patient can carry high
+enrichment *and* a large incremental gain — those are not in tension, and collapsing
+them into one number would hide exactly that case. This is the quantity a single- vs.
+dual- vs. sequential-target discussion actually turns on, and it generalizes directly
+to the coverage matrix below.
 
 **The null must be depth-conditioned, or this test measures library size.** Dropout is
 a per-*cell* property: a shallow cell is more likely to read zero for *both* genes, so
@@ -1139,17 +1205,42 @@ worst kind. Therefore:
 - This supersedes the "label-permutation null" originally filed under stage 09: that
   test, as written, was already this test — it just wasn't labelled as one.
 
-**Probabilistic dropout-adjusted DN estimate (added 2026-08-21).** The binary
-positive/negative call remains primary and is what stages 10-12 consume; the biology is
-better described by `P(truly expressed | observed counts, depth, background)`, and the
-threshold band alone does not capture that. Fit a detection curve on the
-expression-matched control genes already selected for the false-negative floor —
-detection probability as a function of cell depth and gene mean — giving each observed
-zero an approximate `P(false zero)`, and compute an expected DN fraction by summing
-per-cell `P_i(BCMA⁻) · P_i(GPRC5D⁻)` with the dependence handled as above. No
-generative model is required; the fitted curve is enough. The stage then reports three
-numbers per patient: **observed DN**, **threshold-robust DN interval**, and
-**dropout-adjusted expected DN**.
+**The detection curve, and what it can and cannot deliver (corrected 2026-08-21).**
+An earlier draft of this stage proposed a "dropout-adjusted expected DN" computed as
+`Σ_i P_i(BCMA⁻) · P_i(GPRC5D⁻)`. **That formula is circular and is not used as a
+corrected estimate**: multiplying the two marginals assumes exactly the independence
+that the co-escape test above exists to interrogate, so a tumor with genuinely
+correlated antigen loss would be "corrected" toward the very null it violates.
+
+Two consequences, and the first is a simplification worth having:
+
+- **The "dropout-adjusted DN" and the "expected DN under depth-conditioned
+  independence" are the same number.** They were specified as two separate
+  deliverables; they are one computation serving one purpose. It is reported once, as
+  the **depth-adjusted DN expectation under conditional independence** — a *technical
+  baseline* the observed value is compared against, never a corrected truth. Merging
+  them also removes a deliverable that would have invited exactly the misreading above.
+- **No dropout-corrected DN point estimate is produced, and none is claimed.** Dropout
+  is *bounded* here — by the threshold sensitivity band, the expression-matched
+  false-negative floor, the depth regression and the downsampling check — not corrected.
+  The observed DN stays the point estimate, reported as an interval. Saying so plainly
+  is stronger than shipping a number whose correction rests on an assumption the
+  project is simultaneously testing.
+
+Still build the detection curve: fit detection probability against cell depth and gene
+mean on the expression-matched control genes already selected for the false-negative
+floor, giving each observed zero an approximate `P(false zero)`. It is what makes the
+depth-conditioned null above quantitative rather than rank-based, and it is what turns
+"GPRC5D is lowly expressed" into a number. It just does not license a corrected DN.
+
+**A genuinely dropout-corrected DN would need a joint model, and is deferred.** The
+defensible version is a latent-class model over the four true states
+(B⁺G⁺ / B⁺G⁻ / B⁻G⁺ / B⁻G⁻) with per-cell detection probabilities from the curve above,
+fit by EM over the observed 2×2 — which estimates the true joint *without* assuming
+independence, and yields the co-escape enrichment as a by-product rather than an input.
+That is a real piece of statistical work and it is **not** on the critical path: it is
+filed here so it is not reinvented casually, and so that the current position ("bounded,
+not corrected") is understood as a deliberate choice rather than an oversight.
 
 **Imputation/denoising (MAGIC, scVI, ALRA, …) is forbidden for positivity calls**, and
 this is not a stylistic preference: imputation manufactures low-level expression by
@@ -1553,6 +1644,24 @@ all-or-nothing:
   antigen quantification. It validates **antigen abundance and the plausibility of
   antigen-negative calls** — never the dual-negative fraction itself, which is a
   joint single-cell quantity that bulk destroys by construction.
+- **No composite risk score, anywhere.** DN fraction, incremental coverage gain,
+  co-escape enrichment, DN coherence, malignant confidence, threshold sensitivity and
+  bulk concordance stay separate columns — in the patient table and in the coverage
+  matrix alike. A weighted utility would need principled weights that do not exist, and
+  would hide the inputs a reader could otherwise disagree with.
+- **Co-escape enrichment measures eroded complementarity, not futility.** Adding a
+  second target moves the uncovered fraction from `P(A⁻)` to `P(A⁻ ∩ B⁻)`, which is a
+  real gain even under strong correlated loss. Never write that enrichment means dual
+  targeting "doesn't help"; report the incremental gain next to it.
+- **No dropout-corrected DN point estimate is claimed.** `Σ P(A⁻)·P(B⁻)` is the
+  independence baseline the co-escape test compares against, *not* a correction —
+  using it as one would assume away the dependence being measured. Dropout is bounded
+  (sensitivity band, false-negative floor, depth regression, downsampling), not
+  corrected. A joint latent-class/EM model over the four true states is the honest way
+  to correct it and is deliberately deferred, not forgotten.
+- **Bootstrap at the level of the question**: sample → cell within patient for a
+  per-patient CI (patient is conditioned on, not random); patient → sample → cell for
+  cohort-level quantities. Single-sample patients get optimistic CIs and this is stated.
 - **Co-negativity enrichment is a first-class result, and its null is
   depth-stratified.** Whether the *same* cells lose both antigens is a different and
   sharper question than how many are double-negative. An unconditioned permutation

@@ -175,11 +175,21 @@ a different patient also has 6% double-negative cells, but their individual rate
 predict 1.5%. That's four times more overlap than chance, and it means something quite
 different: the *same cells* are shutting down both targets together.
 
-That second patient is the one dual targeting doesn't help. Adding a second binder
-works when the two antigens fail independently, because the cells that dodge one are
-usually still caught by the other. It stops working when a subpopulation has turned
-both off at once. So each patient gets a **co-escape enrichment** number: observed
-double-negatives divided by what chance alone would predict.
+What does that mean practically? Adding a second target still helps the second patient
+— just less than you'd hope. If 30% of cells lack BCMA, adding GPRC5D brings the
+uncovered share down to whatever fraction lacks *both*: 6% if the two failures are
+unrelated, maybe 15% if they travel together. Fifteen percent is worse than six, but
+it's still half of thirty. So co-escape doesn't measure whether the second target is
+worth adding — it measures **how much of the benefit you expected gets eaten by the two
+failures overlapping**. (An earlier draft of this document said the second patient is
+"the one dual targeting doesn't help." That was too strong, and the arithmetic above is
+why.)
+
+So each patient gets two numbers here, kept separate because they answer different
+questions: a **co-escape enrichment** figure (observed double-negatives divided by what
+chance alone predicts — a fact about biology) and an **incremental coverage gain**
+(how much the second target actually reduces the uncovered fraction — a fact about
+clinical value). A patient can score high on both.
 
 One trap here, which is worth knowing about because it points the wrong way. Cells that
 were sequenced shallowly show false zeros for *both* genes at once, purely because

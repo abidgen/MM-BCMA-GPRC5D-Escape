@@ -55,7 +55,10 @@ clonal heterogeneity rather than acquired resistance.
    controls for **marrow on-target/off-tumor expression context**.
 9. Extend from two antigens to a **combinatorial coverage matrix** over BCMA, GPRC5D,
    SLAMF7, FCRL5, CD38 and others: which target pair or triple covers the most of
-   *this* patient's clone, traded off against normal-tissue expression.
+   *this* patient's clone — reported as separate columns (uncovered fraction,
+   incremental gain from the second target, co-loss enrichment, normal *marrow*
+   expression) rather than collapsed into a utility score, since the weights such a
+   score needs would encode a clinical judgement this data cannot supply.
 10. As an **exploratory** extension, relate escape risk to the immune microenvironment
     via LIANA+ (a native Python reimplementation of CellChat's algorithm) — with the
     patient (not the cell) as the unit of replication and immune-cell abundance
@@ -87,10 +90,13 @@ rules out formal ambient-RNA correction (SoupX/DecontX) — see `CLAUDE.md` for 
 is handled instead. `scripts/01_download_data.sh` pulls and unpacks the data directly
 from GEO's FTP.
 
-The matched bulk RNA-seq (GSE223061, ~28 samples overlapping the single-cell cohort)
-is used as an **orthogonal check on the antigen quantification** in stage 09: if bulk
-shows signal where the single-cell data reads zero, that quantifies the dropout rate
-directly rather than leaving it as a caveat.
+The matched bulk RNA-seq (GSE223061, ~28 samples overlapping the single-cell cohort —
+a figure inherited from earlier notes and re-derived at stage 09, not taken on faith)
+is used as an **orthogonal check on the antigen quantification** in stage 09: bulk
+signal where the single-cell data reads zero is quantified evidence *consistent with*
+dropout, and it bounds the false-negative rate rather than leaving it as a caveat. It
+is not a direct measurement of the dropout rate — the two assays differ in cellular
+composition and sensitivity, so the discordance has more than one possible cause.
 
 ### Known limitations, stated up front
 
