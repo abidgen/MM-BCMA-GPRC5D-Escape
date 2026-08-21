@@ -35,22 +35,37 @@ clonal heterogeneity rather than acquired resistance.
    clone that would be invisible to a combined BCMA + GPRC5D strategy — reported with
    bootstrap confidence intervals and a sensitivity band across detection thresholds,
    never as a bare point estimate.
-6. Test **whether the escape population is a real subclone or scattered technical
-   noise** — cells clustered together in transcriptional space imply a pre-existing
-   resistant clone that therapy would select for; cells scattered at random imply
-   dropout. Only the first predicts relapse, so the distinction is the point.
-7. Validate the antigen calls against **matched bulk RNA-seq** from the same samples,
-   and derive a normal-plasma-cell expression baseline from the healthy marrow
-   controls — adding an on-target/off-tumor **safety** axis alongside efficacy.
-8. Extend from two antigens to a **combinatorial coverage matrix** over BCMA, GPRC5D,
+6. Test **co-negativity enrichment**: are the *same* cells losing both antigens more
+   often than the two antigens' individual negative rates would predict? A 6% escape
+   fraction built from two independent partial failures is a different clinical
+   proposition from a 6% built by a coordinated antigen-low phenotype, and only the
+   second is a problem a second binder cannot solve. The null is stratified by
+   sequencing depth, because shallow cells read zero for both genes and would
+   otherwise manufacture exactly this signal.
+7. Test **whether the escape population is structured or scattered technical noise**,
+   on three escalating levels — non-random location in transcriptional space, a shared
+   expression program, and finally support from CNV-defined tumor substructure. Only
+   the third licenses the word *subclone*; the first two establish an escape-associated
+   *state*. Transcriptional clustering has many non-genetic causes, so the claim
+   escalates with the evidence rather than ahead of it.
+8. Validate the antigen calls against **matched bulk RNA-seq** from the same samples —
+   as a check on antigen *abundance* and on whether single-cell zeros are credible, not
+   on the escape fraction itself, which is a joint single-cell quantity bulk cannot
+   see — and derive a normal-plasma-cell expression baseline from the healthy marrow
+   controls for **marrow on-target/off-tumor expression context**.
+9. Extend from two antigens to a **combinatorial coverage matrix** over BCMA, GPRC5D,
    SLAMF7, FCRL5, CD38 and others: which target pair or triple covers the most of
    *this* patient's clone, traded off against normal-tissue expression.
-9. Relate escape risk to the immune microenvironment via LIANA+ (a native Python
-   reimplementation of CellChat's algorithm), testing whether high-escape-risk patients
-   also show weaker immune cell-cell signaling — with the patient (not the cell) as the
-   unit of replication, and immune-cell abundance controlled as a confounder.
-10. Output a per-patient risk ranking usable for single- vs. dual- vs.
-    sequential-target CAR-T strategy discussions.
+10. As an **exploratory** extension, relate escape risk to the immune microenvironment
+    via LIANA+ (a native Python reimplementation of CellChat's algorithm) — with the
+    patient (not the cell) as the unit of replication and immune-cell abundance
+    controlled as a confounder. Exploratory by design: n ≈ 41 patients against hundreds
+    of ligand-receptor pairs does not support a confirmatory claim.
+11. Output per-patient **risk tiers** — robust-high / uncertain / robust-low, with
+    co-escape enrichment and escape-population coherence as separate columns — usable
+    for single- vs. dual- vs. sequential-target CAR-T strategy discussions. Not a rank
+    ordering: the confidence intervals overlap too much for ordinal positions to mean
+    anything.
 
 A planned Phase 2 independently re-runs the same pipeline on a second, external
 cohort (GSE117156) once Phase 1 is complete, to test whether the core finding
@@ -83,11 +98,24 @@ directly rather than leaving it as a caveat.
   positive (deflating the escape fraction); dropout makes true positives look negative
   (inflating it). Dropout is the larger effect here because GPRC5D is a low-abundance
   transcript and the median cell has ~2,000 detected genes. The headline number is
-  reported as a bracketed interval, and the defensible claim is the **stability of the
-  patient ranking** across detection thresholds, not any single value.
+  reported as a bracketed interval; ranking stability across detection thresholds is
+  the robustness check that earns a patient a tier, and the tiers — not an ordinal
+  ranking, and not any single value — are the deliverable.
 - **Transcript is not surface protein.** CAR-T binds protein; this measures mRNA. BCMA
   is actively shed from the cell surface by γ-secretase, and GPRC5D transcript
   correlates imperfectly with surface density.
+- **"Subclone" is a claim this data can only sometimes support.** Resolving CNV
+  substructure *within* one patient's tumor is much harder than telling tumor from
+  normal, and at ~2,000 genes per cell it is often underpowered. Where it is, the
+  escape population is reported as an escape-associated *state* and the CNV level as
+  *not evaluable* — never as evidence that no subclone exists.
+- **Bulk RNA-seq cannot validate the escape fraction.** A tumor that is half
+  BCMA-only and half GPRC5D-only looks, in bulk, like both antigens are well
+  expressed, while containing no dual-positive cells at all. Bulk constrains each
+  gene's abundance; the joint distribution across cells has no orthogonal check here.
+- **Marrow expression is not a safety profile.** The healthy-marrow controls give
+  normal plasma-cell antigen levels in marrow. GPRC5D's clinically decisive off-tumor
+  site is keratinized tissue, which a bone marrow dataset cannot observe at all.
 - **Patient-ID mapping is provisional** pending the paper's Supplementary Table S1 (a
   naive rule yields 47 patients where the paper reports 41). Every affected number is
   labelled provisional in the output until resolved.

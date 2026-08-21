@@ -38,8 +38,8 @@ and this cohort's median cell has ~2,044 detected genes.
 - **Stages 09 and 10 added, and the whole sequence renumbered** so number order
   equals execution order. 09 = escape robustness (matched bulk RNA-seq validation,
   normal-PC antigen baseline, permutation null). 10 = subclone + phenotype (is the
-  DN population a real subclone or scattered noise; pseudobulk DE; pre-registered
-  γ-secretase hypothesis). Cell-cell communication moved 09 → **11**; decision
+  DN population a real subclone or scattered noise — **reframed 2026-08-21, see the
+  second design review below**; pseudobulk DE; pre-registered γ-secretase hypothesis). Cell-cell communication moved 09 → **11**; decision
   packet moved 10 → **12**.
 - **Stage 08 gained its defense layer** — threshold sensitivity band, depth/dropout
   falsification test, expression-matched false-negative floor, bootstrap CIs with a
@@ -241,17 +241,56 @@ directory were removed. Everything is recoverable from the **`r-build-snapshot`*
 6. Continue through stages 05-12 per `CLAUDE.md`'s pipeline section — notebook
    number N always writes to `results/N_*/`, nothing else. Run them in numeric
    order; number order is execution order.
+7. **Apply the 2026-08-21 review corrections** as each stage is written — they are
+   documented in place in `CLAUDE.md`, not collected in one section. Summary in
+   "Second design review" below.
 
 ### Presentable stopping points
 
 The stage ordering was chosen so the project is showable partway through rather than
 all-or-nothing:
-- **After 04-08:** a working escape-fraction ranking.
-- **After 09:** a ranking that survives hostile questioning.
-- **After 10:** the actual scientific finding (subclone vs. noise).
+- **After 04-08:** escape fractions plus co-escape enrichment per patient.
+- **After 09:** results that survive hostile questioning.
+- **After 10:** the actual scientific finding (is the escape population structured).
 - **After 11-12:** the full decision packet.
 - **Then** S1 retrieval (un-flag provisional numbers, add longitudinal + cytogenetics),
   and only then Phase 2.
+
+---
+
+## Environments (built 2026-08-21)
+
+`envs/env-{qc,core,annotation,communication}.yml` are written and built as conda envs
+`mm-qc` / `mm-core` / `mm-annotation` / `mm-communication`. `envs/env-composition.yml`
+(scCODA + TensorFlow) is **written but not built** — on demand only, per CLAUDE.md.
+
+Register kernels once per env: `python -m ipykernel install --user --name mm-<env>`.
+
+Kernels are registered for all four; each kernelspec was confirmed to point at its own
+interpreter. **All four verified to import their key packages, and both R bridges work**
+(mm-qc: R 4.3.3 + scDblFinder 1.16.0; mm-annotation: SingleR 2.4.0 + celldex 1.12.0 with
+both Novershtern and HumanPrimaryCellAtlas references present). mm-core has infercnvpy
+0.6.1, pydeseq2 0.5.4, decoupler 2.2.0, harmonypy 2.0.0; mm-communication has liana
+1.8.1 with both `mt.cellchat` and `mt.rank_aggregate`.
+
+Five deviations from CLAUDE.md's original env specs, all found by actually building and
+importing rather than trusting the yml:
+- `infercnvpy` is **pip-installed inside `env-core`** — not packaged for conda anywhere.
+- `celldex` is really `bioconductor-celldex`.
+- `decoupler` is **pip 2.2.0**, because bioconda's is stuck at 1.5.0, pins `numpy<2`, and
+  fails to import under numba 0.67. **2.x is an API rewrite (`dc.mt.*`/`dc.op.*`) — do
+  not write stage 10 against 1.x tutorials.**
+- `liana` needed `pydantic` + `mudata<0.4` pinned; bioconda's recipe under-declares and
+  `import liana` failed outright without them.
+- `jupytext` added to all four (every notebook is paired).
+
+**Do not `pip install` into these envs casually.** Trying `decoupler==1.8.0` during setup
+silently downgraded numpy 2.5.2 → 1.26.4 and numba, breaking scanpy/scipy/pydeseq2/zarr
+at once; the fix was to delete and recreate mm-core from the yml. Both legitimate pip
+entries live in the yml so a rebuild reproduces them.
+
+All pinned versions (`scanpy=1.11`, `r-base=4.3.3`, `rpy2=3.5.11`,
+`bioconductor-scdblfinder=1.16.0`) exist and were confirmed pre-build.
 
 ---
 
@@ -278,8 +317,9 @@ natively reimplements CellChat's own algorithm).
   unfiltered matrices exist. Mitigated via an empirical noise-floor threshold on
   antigen positivity instead of a naive `>0` call.
 - **Dropout is the opposite-signed, larger bias and must be bounded too** — the
-  headline metric is reported as an interval with a threshold sensitivity band, and
-  the claim is ranking stability, not any single value.
+  headline metric is reported as an interval with a threshold sensitivity band.
+  Ranking stability is the robustness *diagnostic*; **risk tiers** (robust-high /
+  uncertain / robust-low) are the stage-12 deliverable, not an ordinal ranking.
 - Patient-ID mapping is unresolved (47 vs. 41 patients) — fixed against
   Supplementary Table S1 before stage 08's per-patient aggregation is *final*, but
   per the 2026-08-20 policy this **no longer blocks execution**: proceed
@@ -287,7 +327,47 @@ natively reimplements CellChat's own algorithm).
 - Supplementary Table S1 itself is still not in the repo.
 - `infercnvpy` is required (not optional) and normal-BM samples are controls
   (not filler).
-- Stage 11 uses patient — not cell — as the unit of replication.
+- Stage 11 uses patient — not cell — as the unit of replication, and is **explicitly
+  exploratory** (ninth in the scientific hierarchy, not co-equal with the antigen work).
+
+### Second design review (2026-08-21) — five corrections + one added analysis
+
+All adopted; documented in place in `CLAUDE.md`. Do not re-litigate.
+
+1. **Transcriptional clustering ≠ clonality.** `clonality-of-escape` is retired for a
+   three-level **DN-coherence hierarchy**; the word *subclone* requires CNV support
+   (level 3), and level 3 reports **supported / not evaluable** — never "no subclone",
+   because within-clone CNV resolution is often underpowered at ~2,044 genes/cell.
+2. **Bulk RNA-seq validates antigen *abundance*, not the DN fraction** — bulk averages
+   cells and destroys the joint distribution the metric is made of.
+3. **A dropout-adjusted probabilistic DN estimate runs alongside the binary call.**
+   Binary stays primary; **imputation/denoising stays forbidden** for positivity.
+4. **The "label-permutation null" moved 09 → 08** — it was never a no-signal null; it
+   tests independence between the two antigen-negativities.
+5. **Normal-BM gives marrow expression context, not a safety axis** — GPRC5D's decisive
+   off-tumor site (keratinized tissue) is invisible to a marrow dataset.
+
+**Added: BCMA/GPRC5D co-negativity enrichment (stage 08)** — per-patient 2×2, observed
+DN vs. `P(BCMA⁻)×P(GPRC5D⁻)`. Distinguishes two independent partial failures from a
+coordinated antigen-low phenotype, which is what determines whether a second binder
+helps at all.
+
+**Two caveats added on top of the review, both load-bearing:**
+- The independence null **must be depth-stratified**. Shallow cells read zero for both
+  genes, so an unconditioned permutation manufactures co-escape enrichment from library
+  size — biased toward the project's own hypothesis. Report the unconditioned ratio
+  next to the conditioned one; the gap is the artifact.
+- `infercnvpy` may not resolve **sub**clonal CNV within one patient's tumor. Underpowered
+  ≠ negative. Same guard applies to stage 10's level-1 enrichment test, which is also
+  depth-stratified.
+
+**Other adjustments:** stage 07 emits malignant-confidence tiers (`high`/`probable`/
+`uncertain`) with the stage-08 result re-run on `high` only as a sensitivity analysis;
+stage 06's F1 numbers are **concordance**, not validation accuracy (marker-coverage test
+is the biological evidence and can veto a class); stage 08's minimum-cell rule is
+re-derived from needed resolution (expect 100-200, not 50) with hierarchical
+patient→sample→cell bootstrapping; TC classes are labelled **TC-like expression
+subtypes**, never translocation calls.
 - Malignant subclustering is per-patient and un-integrated; Harmony is for the
   immune compartment only.
 - GSE117156 is the confirmed Phase 2 validation dataset (own `phase2_NN_*`

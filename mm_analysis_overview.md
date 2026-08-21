@@ -152,14 +152,44 @@ Rather than pick a number and hope, the analysis now:
 - cross-checks against a **completely separate bulk RNA-seq measurement** of the same
   samples, which was downloaded at the start of the project and originally unused. If
   the bulk data shows the antigen where the single-cell data shows nothing, that's
-  direct evidence of how much dropout is happening.
+  direct evidence of how much dropout is happening. Note what this can and can't do:
+  bulk tells you how much of each antigen is around overall, but it averages every cell
+  together, so it can't see *which cells* have which antigen. A tumor that's half
+  BCMA-only and half GPRC5D-only looks, in bulk, like a tumor with plenty of both — even
+  though not a single cell carries both. So bulk checks the antigen levels and whether
+  the single-cell zeros are believable; it can't check the escape fraction itself.
 
 ### Stage E — The novel metric: dual-antigen escape fraction
 For each patient: what fraction of their malignant cells are double-negative — i.e.,
 would be invisible to a therapy targeting both BCMA and GPRC5D simultaneously.
 
-### Stage E2 — Is it a *subclone*, or just noise?
-**This is the most important addition, and arguably the real scientific question.**
+### Stage E1.5 — Are the *same* cells losing both antigens?
+This is a sharper question than the escape fraction itself, and it costs almost nothing
+to ask.
+
+Suppose 30% of a patient's tumor cells lack BCMA and 20% lack GPRC5D. If those two
+failures are unrelated, you'd expect 0.30 × 0.20 = 6% of cells to lack both by pure
+coincidence. So a 6% escape fraction in that patient is exactly what independence
+predicts — two separate, partial problems that happen to overlap sometimes. Now suppose
+a different patient also has 6% double-negative cells, but their individual rates only
+predict 1.5%. That's four times more overlap than chance, and it means something quite
+different: the *same cells* are shutting down both targets together.
+
+That second patient is the one dual targeting doesn't help. Adding a second binder
+works when the two antigens fail independently, because the cells that dodge one are
+usually still caught by the other. It stops working when a subpopulation has turned
+both off at once. So each patient gets a **co-escape enrichment** number: observed
+double-negatives divided by what chance alone would predict.
+
+One trap here, which is worth knowing about because it points the wrong way. Cells that
+were sequenced shallowly show false zeros for *both* genes at once, purely because
+there wasn't enough data. That alone creates fake "co-escape" — the same cells reading
+negative for both, for a purely technical reason. So the comparison is done within
+groups of similarly-sequenced cells, and the uncorrected number is reported next to the
+corrected one so the size of that artifact is visible rather than hidden.
+
+### Stage E2 — Is the escape population *structured*, or just noise?
+**This is arguably the real scientific question.**
 
 Saying "3% of this patient's tumor cells are double-negative" and saying "this patient
 already has a 3% resistant subclone" sound identical but aren't. Only the second one
@@ -168,13 +198,27 @@ that therapy would actively select for, leaving them to regrow. Cells that just
 happen to be scattered randomly across the tumor are far more likely to be measurement
 noise, and don't predict relapse the same way.
 
-The two situations look different in the data, which is what makes this testable. If
-the double-negative cells cluster together — i.e. they resemble each other, sitting in
-the same neighborhood of "cell similarity space" — that's a real subclone. If they're
-sprinkled at random among ordinary antigen-positive cells, that's the fingerprint of
-dropout. So each patient gets a second number alongside their escape fraction: **how
-clonal is their escape risk**. A patient whose 3% is one tight subclone is a different
-clinical proposition from a patient whose 3% is scattered.
+The tempting shortcut is: if the double-negative cells cluster together in "cell
+similarity space", it's a subclone; if they're sprinkled at random, it's dropout. That
+shortcut is too quick, and the plan used to rely on it. Cells can resemble each other
+for lots of reasons that have nothing to do with being genetically related — they might
+all be dividing, all stressed, all responding to interferon, or all just sequenced
+shallowly. And a genuinely related group of cells doesn't have to look alike.
+
+So the claim is built in three steps, each one stronger than the last:
+1. **Are the double-negative cells non-randomly placed?** If yes, something structures
+   them — that alone rules out pure scatter.
+2. **Do they share a distinctive gene program?** If yes, there's an escape-associated
+   *state* — a recognizable mode these cells are in.
+3. **Do they share genetic changes** (chromosome gains and losses, read off the
+   expression data)? Only if this holds does the word *subclone* get used.
+
+The honest caveat: step 3 is hard. Spotting the difference between a tumor cell and a
+healthy cell is much easier than spotting differences *within* one patient's tumor, and
+at this data's depth it often won't be resolvable at all. When that happens the answer
+is "couldn't tell", not "no subclone" — because quietly treating an underpowered test
+as a negative result would systematically understate exactly the risk this project
+exists to measure.
 
 We also look at *what else* is different about those escape cells — what genes they
 turn up or down. One specific hypothesis is written down in advance (so it stays a
@@ -203,7 +247,7 @@ simply *have* fewer T and NK cells to begin with, in which case "weaker immune
 signaling" is just an artifact of there being fewer immune cells to signal. So immune
 cell abundance gets measured separately and controlled for.
 
-### Stage F2 — What about safety, not just efficacy?
+### Stage F2 — What normal marrow cells carry these antigens
 The healthy bone marrow samples in the dataset were originally going to sit unused.
 They're now doing two jobs.
 
@@ -264,12 +308,15 @@ in the deliverable rather than waiting to be caught.
   signal about how someone works than any individual result.
 - **Distinguishing "3% of cells are negative" from "there's a 3% resistant subclone."**
   These are easy to conflate and only one of them predicts relapse. Knowing they're
-  different, and knowing they're separable in the data, is the difference between a
-  descriptive number and an actual finding.
+  different — and then *not* over-claiming the second when the data only supports the
+  first — is the difference between a descriptive number and an actual finding.
+- **Asking whether the same cells lose both antigens**, rather than stopping at how
+  many lose both. That's the question that determines whether a second target actually
+  buys you anything, and it's one contingency table per patient.
 - **Using the unglamorous data.** The matched bulk RNA-seq and the healthy-marrow
   controls were both already downloaded and both originally slated to sit unused. They
-  turned out to supply the project's only independent validation of its antigen calls
-  and its only handle on safety.
+  turned out to supply the project's only independent check on its antigen levels and
+  its only measurement of what normal marrow plasma cells express.
 - **Getting the statistics right on the immune comparison** — treating patients rather
   than cells as the unit of replication, and controlling for the obvious alternative
   explanation instead of hoping nobody raises it.
@@ -296,21 +343,29 @@ in the deliverable rather than waiting to be caught.
    you can measure in single-cell data — a zero is either real biology or a missed
    measurement. So I bounded both error directions instead of one, reported the
    ranking as an interval, and validated the antigen calls against matched bulk
-   RNA-seq from the same samples."
-5. "Then the part I actually care about: I tested whether the double-negative cells
-   are a real subclone or just scattered noise, because only a subclone is something
-   therapy would select for. That's the difference between a descriptive percentage
-   and a prediction about relapse."
+   RNA-seq from the same samples — being careful to say that bulk checks the antigen
+   *levels*, not the escape fraction, since averaging every cell together destroys the
+   per-cell combination that the whole metric is about."
+5. "Then the two parts I actually care about. First: are the *same* cells losing both
+   antigens more often than chance predicts from their individual rates? Because if the
+   two antigens fail independently, dual targeting works — and if they fail together in
+   the same cells, it doesn't. Second: is that escape population structured or scattered,
+   which I tested in three escalating steps and only called a subclone at the step that
+   involves shared genetic changes. Transcriptional similarity alone has too many
+   innocent explanations to carry that word."
 6. "I also used the healthy marrow controls to check whether normal plasma cells carry
-   these antigens too — which brings on-target/off-tumor safety into the comparison,
-   not just efficacy."
-7. "I tied that back to the immune microenvironment, testing whether high-risk patients
-   are also immunologically colder — with the patient as the unit of replication, and
-   immune-cell abundance controlled, so it isn't just a composition artifact."
-8. "The output is a per-patient ranking that could inform which patients are better
-   candidates for a dual-target vs. sequential-target strategy — plus a coverage
-   comparison across other candidate targets, in case a different pairing covers a
-   given patient's disease better."
+   these antigens too. That's marrow expression context, not a safety profile — GPRC5D's
+   real clinical toxicity is in skin and nails, and a bone marrow dataset can't see that
+   at all."
+7. "I tied that back to the immune microenvironment as an explicitly exploratory
+   extension — whether high-risk patients are also immunologically colder, with the
+   patient as the unit of replication and immune-cell abundance controlled. Forty-one
+   patients against hundreds of possible signaling pairs doesn't support a confirmatory
+   claim, so I don't make one."
+8. "The output is per-patient risk *tiers* rather than a ranked list — the error bars
+   overlap too much for '#1, #2, #3' to be honest — with the co-escape and structure
+   results as separate columns, plus a coverage comparison across other candidate
+   targets in case a different pairing covers a given patient's disease better."
 
 ---
 

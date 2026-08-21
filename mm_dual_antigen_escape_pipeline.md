@@ -345,8 +345,64 @@ So the stage reports a range, not a number:
 - **Confidence intervals on every patient.** Bootstrap over each patient's malignant
   cells. Sample cell counts in this cohort vary about fifteen-fold, so a bare rank
   ordering claims a precision it doesn't have. A **minimum malignant-cell rule** is
-  declared up front (starting at ≥50 cells) and excluded patients are **named in the
-  output**, never quietly dropped.
+  declared up front and excluded patients are **named in the output**, never quietly
+  dropped.
+  - **≥50 cells is a floor, not the answer (revised 2026-08-21).** At n=50 a single
+    cell *is* 2%, so 1% / 2% / 3% escape are not separable and ordering patients across
+    that range is noise with a decimal point on it. Derive the threshold from the
+    smallest DN fraction the project intends to call meaningful — a 5% population gives
+    ~2.5 expected DN cells at n=50, ~5 at n=100, ~10 at n=200 — so expect it to land
+    nearer **100-200**. The procedure is unchanged: inspect the distribution, fix the
+    threshold, *then* look at the results.
+  - **Bootstrap hierarchically where the design is hierarchical (2026-08-21).** Cells
+    within a patient aren't independent draws, and several patients contribute multiple
+    samples (`27522_1`…`_6` and others). A flat cell-level bootstrap treats sample-level
+    batch variation as biological spread and reports intervals that are too narrow.
+    Resample **patient → sample → cell** where a patient has multiple samples, and
+    report both intervals so the inflation is visible. Correct nesting is S1-gated, so
+    this stays provisional alongside every other per-patient aggregate.
+
+### Co-negativity enrichment — the key derived metric (added 2026-08-21)
+
+The escape fraction alone can't distinguish two clinically different tumors. Per
+patient, build the 2×2 of BCMA± × GPRC5D± over malignant cells and compare observed
+double-negatives against the independence expectation
+`E[DN] = P(BCMA⁻) × P(GPRC5D⁻)`, reporting the **co-escape enrichment ratio**
+`observed / expected` with a Fisher's exact test and a permutation CI.
+
+This splits three facts the single metric fuses together: how often each antigen is
+individually absent, how many cells are DN, and whether the *same* cells are
+disproportionately losing both. A patient at 6% DN ≈ 0.3 × 0.2 has two independent
+partial failures, and a second binder helps them. A patient at 6% DN with a 4×
+enrichment ratio has a coordinated antigen-low phenotype that a second binder does not
+solve — and that is the patient Stage 10 then goes looking for a mechanism behind.
+
+**The null must be depth-conditioned, or this measures library size.** Dropout is a
+per-*cell* property: a shallow cell reads zero for *both* genes, so depth heterogeneity
+alone produces positive BCMA⁻/GPRC5D⁻ association. A permutation that shuffles labels
+freely within a patient destroys the depth↔label coupling and will report co-escape
+enrichment on data with no biological co-occurrence whatsoever — an artifact pointing
+in exactly the direction the project hopes to find, which is the worst kind. So permute
+**within depth strata** (or compute `E[DN]` from a per-cell independence model where
+each cell's `P(BCMA⁻)` and `P(GPRC5D⁻)` are functions of its own depth), and **report
+the unconditioned ratio alongside** — the gap between the two *is* the artifact,
+quantified.
+
+### A probabilistic layer alongside the binary call (added 2026-08-21)
+
+The binary positive/negative call stays primary and is what Stages 10-12 consume, but
+the underlying biology is `P(truly expressed | counts, depth, background)` and the
+threshold band alone doesn't capture that. Fit a detection curve on the
+expression-matched control genes already selected for the false-negative floor —
+detection probability as a function of cell depth and gene mean — assign each observed
+zero an approximate `P(false zero)`, and sum per-cell `P_i(BCMA⁻) · P_i(GPRC5D⁻)`. No
+generative model needed. Each patient then carries three numbers: **observed DN**, the
+**threshold-robust interval**, and the **dropout-adjusted expectation**.
+
+**Imputation and denoising (MAGIC, scVI, ALRA) are forbidden for positivity calls.**
+They manufacture low-level expression by borrowing from neighboring cells, and whether
+a transcript is genuinely absent is the entire question being asked. Model the
+uncertainty; don't fill it in.
 
 ### From two antigens to a coverage matrix
 
@@ -388,18 +444,37 @@ this worth doing. Two of the bulk files are empty 114-byte stubs and three sampl
 IDs don't line up cleanly with the single-cell names — both documented in
 `CLAUDE.md`, both to be handled rather than silently absorbed.
 
-**Normal plasma-cell antigen baseline.** Do *normal* plasma cells, from the healthy
-`BM*`/`ND_*` marrow, express BCMA and GPRC5D? This is the step that turns the
-project from a pure efficacy story into **efficacy plus on-target/off-tumor safety**
-— which is the axis that actually distinguishes these two antigens clinically. BCMA
-is broadly expressed on normal plasma cells and B-lineage cells; GPRC5D is more
-tumor-restricted in marrow, but carries the keratinized-tissue expression behind
-talquetamab's nail and skin toxicity. Feeds the coverage-matrix trade-off in Stage 08:
-coverage alone is the wrong thing to maximize.
+**Scope correction, 2026-08-21 — bulk validates antigen abundance, not the escape
+fraction.** Bulk averages every cell in the sample together, which destroys the joint
+per-cell distribution the metric is built on. A tumor that is 50% BCMA⁺GPRC5D⁻ and 50%
+BCMA⁻GPRC5D⁺ shows healthy bulk expression of both genes while containing zero
+dual-positive cells. So the correct framing of every output here is **orthogonal
+validation of antigen abundance and of whether the single-cell antigen-negative calls
+are plausible** — never validation of `frac_double_negative`, which has no orthogonal
+check available in this project.
 
-**Label-permutation null.** Shuffle antigen labels within each patient and recompute
-the escape-fraction distribution. That's what the metric looks like with no signal
-in it; the observed values need to sit clearly outside that null.
+**Normal plasma-cell antigen baseline — marrow expression context, not a safety axis
+(scope corrected 2026-08-21).** Do *normal* plasma cells, from the healthy `BM*`/`ND_*`
+marrow, express BCMA and GPRC5D? This is genuinely worth having: BCMA is broadly
+expressed on normal plasma cells and B-lineage cells, and the malignant-versus-normal-PC
+contrast is what makes a coverage number interpretable rather than absolute. It feeds
+the coverage-matrix trade-off in Stage 08, because coverage alone is the wrong thing to
+maximize. What it is *not* is a safety axis. GPRC5D's clinically decisive off-tumor site
+is keratinized tissue — the nail, skin and taste toxicity seen with talquetamab — and a
+bone marrow dataset cannot observe that at all; expression is also not toxicity. Keep
+three things separate in the writeup: **tumor coverage**, **normal marrow expression**
+(measured here), and **known extra-marrow liabilities** (cited from external evidence,
+not measured). A real utility score of the form `coverage − λ · normal-tissue exposure`
+needs a normal-tissue atlas (GTEx/HPA) and is a future extension, not a claim from this
+data.
+
+**Label-permutation null — moved to Stage 08 (corrected 2026-08-21).** Shuffling antigen
+labels within a patient while preserving each antigen's marginal negative rate does not
+produce "the metric with no signal in it" — the marginals are exactly what it holds
+fixed. What it actually tests is whether BCMA-negativity and GPRC5D-negativity
+*co-occur* beyond independence, which is a sharper and more interesting question than
+the one it was written for. It therefore moves to Stage 08 as the co-negativity
+enrichment test, with the depth-stratified null documented there.
 
 ---
 
@@ -408,23 +483,46 @@ in it; the observed values need to sit clearly outside that null.
 New stage, and the one carrying the project's actual scientific payoff rather than
 another robustness check.
 
-**Is the double-negative population a subclone, or just scattered noise?** This is
+**Is the double-negative population structured, or just scattered noise?** This is
 the most important question the project can ask of its own metric. "3% of this
 patient's malignant cells are double-negative" and "this patient carries a
 pre-existing 3% resistant subclone" sound like the same statement and are not — only
 the second one predicts that therapy will *select* for those cells, which is the
 entire clinical premise of measuring baseline escape in the first place.
 
-The two are distinguishable. Per patient, test whether double-negative cells sit
-together in transcriptional space — kNN-neighborhood enrichment or Moran's I on the
-double-negative label, and/or per-patient malignant subclustering with a Fisher test
-for DN enrichment in each subcluster. **Cells scattered at random is the signature of
-dropout; cells clustered together is the signature of a real subclone.** The output
-is a per-patient **clonality-of-escape** score reported next to the escape fraction,
-because a patient whose 3% is concentrated in one coherent subclone is carrying a
-materially different risk from a patient whose 3% is sprinkled at random. This runs
+**Corrected 2026-08-21 — transcriptional clustering does not establish clonality.** The
+earlier formulation ("cells scattered at random is the signature of dropout; cells
+clustered together is the signature of a real subclone") was too strong in both
+directions. A transcriptionally coherent group can come from cell cycle, stress,
+interferon tone, metabolic state, sequencing depth or sample-prep batch just as easily
+as from a genetic subclone — and a genuine genetic clone need not form a tidy
+transcriptional island. The name `clonality-of-escape` prejudged precisely the question
+the analysis exists to ask, so it is retired in favour of **DN coherence**, tested at
+three escalating levels with the claim escalating alongside the evidence:
+
+| Level | Question | Method | Licenses saying |
+|---|---|---|---|
+| **1 — enrichment** | Are DN cells non-randomly located in malignant transcriptional space? | kNN-neighborhood enrichment, Moran's I on the DN label, per-patient subclustering + Fisher, **depth-stratified within-patient permutation** | "non-randomly distributed" |
+| **2 — transcriptional coherence** | Do DN cells share a reproducible program? | the program scores below — MYC, OXPHOS, stress, IFN, UPR, antigen presentation, γ-secretase | "an escape-associated **state**" |
+| **3 — genomic coherence** | Do DN cells preferentially occupy a CNV-defined subclone? | `infercnvpy` substructure from Stage 07 | "an escape-associated **subclone**" |
+
+**Only level 3 licenses the word "subclone."** Levels 1+2 alone are an escape-associated
+*state* — still the thing that separates a structured 3% from a scattered 3%, and still
+worth reporting, but not a claim about pre-existing genetic clones under selection.
+
+**And a negative at level 3 is not evidence of absence.** Resolving CNV substructure
+*within* a single patient's clone is far harder than separating tumor from normal, and
+at ~2,044 median genes/cell it will often be underpowered. Level 3 reports **supported /
+not evaluable**, with per-patient CNV resolution stated — never "no CNV subclone".
+Treating an underpowered null as a negative would systematically understate exactly the
+risk this project exists to measure.
+
+The per-patient level attained is reported next to the escape fraction. This runs
 on the per-patient un-integrated embedding from Stage 05, never the Harmony one — for
-the reason given there.
+the reason given there. Note that the level-1 permutation carries the same
+depth-stratification requirement as Stage 08's co-negativity test: shallow cells are
+both likelier to read double-negative *and* to sit together in low-dimensional space,
+so an unconditioned enrichment test will see depth structure and report it as biology.
 
 **What else is different about the escape cells?** Pseudobulk differential expression
 (`pydeseq2`/`decoupler`) of double-negative vs. dual-positive malignant cells, with
@@ -485,10 +583,19 @@ Changes from the scope expansion:
 - **A caterpillar plot with confidence intervals replaces the ranked bar chart.** A
   bar chart asserts a precision this metric doesn't have; the CIs from Stage 08 are
   part of the result, not a footnote to it.
-- **The multi-antigen coverage matrix, the clonality-of-escape score, and the
-  bulk-validation correlation** all join the packet — respectively: is there a better
-  target pair for this patient, is their escape risk clonal or scattered, and does an
-  orthogonal assay agree with the single-cell calls.
+- **Risk tiers replace the rank ordering (2026-08-21).** The caterpillar plot fixed
+  the chart but not the deliverable — "#1 patient 123, #2 patient 456" is false
+  precision when the intervals overlap. Patients get **robust high escape** /
+  **uncertain** / **robust low escape**, and the ranking-stability check from Stage 08
+  becomes what *earns* a tier rather than being the output itself.
+- **The multi-antigen coverage matrix, the co-escape enrichment ratio, the DN-coherence
+  level, and the bulk-validation correlation** all join the packet as separate columns
+  — respectively: is there a better target pair for this patient, are the same cells
+  losing both antigens, is that population structured, and does an orthogonal assay
+  agree with the single-cell antigen levels. They are kept as separate columns rather
+  than folded into one score, because a patient can be low on the escape fraction and
+  high on co-escape enrichment, and that patient is more interesting than a bare
+  ranking would ever show.
 - **The bias-direction table** (ambient, dropout, malignant-call error,
   mRNA-vs-protein, each with its sign on the metric) is included rather than left
   implicit.
@@ -500,8 +607,8 @@ Changes from the scope expansion:
   CITE-seq or flow calibration exists for these two antigens, quantify against it;
   otherwise state it plainly.
 - **Decision rules are declared in advance** — which escape-fraction threshold makes
-  a patient a poor dual-target candidate is fixed before the ranking is looked at,
-  not fitted to it afterwards.
+  a patient a poor dual-target candidate is fixed before the tiers are looked at,
+  not fitted to them afterwards.
 
 ---
 

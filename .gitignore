@@ -100,3 +100,7 @@ Thumbs.db
 .vscode/
 .idea/
 *.swp
+
+# --- Session scratch -----------------------------------------------------------
+# `claude --teleport <id>` handle, written per-session; not project source.
+session_id.txt
