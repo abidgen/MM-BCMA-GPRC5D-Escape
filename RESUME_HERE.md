@@ -65,6 +65,53 @@ and this cohort's median cell has ~2,044 detected genes.
    attempt retrieval when stage 08 aggregation is reached. S1 no longer blocks the
    pipeline, only four specific items (see `CLAUDE.md`'s S1 policy).
 
+## 2026-08-20 — stage 06 annotation methodology settled
+
+`CLAUDE.md`'s stage 06 said "`celltypist` **and/or** marker-panel scoring." That
+`and/or` was an unmade decision sitting mid-pipeline. It is now settled and documented
+across all four docs. No code written — `src/` and `envs/` are still unscaffolded.
+
+- **Three methods, compared**: manual marker panel, `celltypist`
+  (`Immune_All_Low`/`High`, `majority_voting`, over-clustered on the stage-05 Leiden
+  key), and `SingleR` against `celldex`'s `NovershternHematopoieticData`. SingleR was
+  chosen over scArches specifically because `Immune_All_*` is immune-only and its
+  predictable blind spot is erythroid/HSPC — a sorted-hematopoietic reference targets
+  exactly that gap.
+- **Decision is per class, not per method** (hybrid), with F1 thresholds declared
+  before looking: PlasmaCell ≥ 0.95, T/NK/Myeloid ≥ 0.90, rest ≥ 0.85. Written to
+  `results/06_annotation/annotation_decision.md`.
+- **`obs["cell_type"]` is the only load-bearing output**; `cell_type_fine`,
+  `annotation_source`, `annotation_conf` are provenance/convenience. Stages 07-12 read
+  `cell_type` and nothing else, so the annotation choice stays reversible.
+- **Identity vs. state separated**: cell-cycle / IFN / antigen-presentation / UPR /
+  hypoxia are continuous `obs` floats, never categorical, never merged into
+  `cell_type`.
+- **New env `mm-annotation`** (`envs/env-annotation.yml`) — SingleR is R, and R stays
+  isolated the way `env-qc` isolates scDblFinder. Stage 06's env changed from
+  `mm-core` to `mm-annotation` in every doc. Four envs now, not three.
+- **Stage 10 gained** malignant-cell program scoring (adds **MYC** and **OXPHOS** to
+  the stage-06 programs) and **TC molecular subgroup** assignment per patient
+  (`CCND1`/`CCND2`/`CCND3`/`NSD2`/`FGFR3`/`MAF`/`MAFB` + `CKS1B` for 1q21 gain, which
+  also cross-checks `infercnvpy`).
+- **UAMS 7-group explicitly rejected** — needs bulk-array signature sourcing and
+  splits n≈41 into unpowerable bins; TC gives most of the interpretive value for far
+  less. TC is used **descriptively**, not as a statistical stratifier at this n.
+- **No custom `celltypist` model** for malignant states — a linear classifier bins
+  continuous tumor substructure and hides intermediates.
+
+**On external LLM suggestions (Gemini/ChatGPT).** A first round was answered against a
+**melanoma** dataset and none of its gene-level content applies here (`MITF`, `MLANA`,
+`AXL`, `NGFR`, neural-crest states, Tirosh/Jerby-Arnon/GSE115978 — melanocyte biology
+with no plasma-cell counterpart). Its *structural* advice did transfer and was adopted:
+continuous non-exclusive program scores, and no custom classifier. A second round,
+correctly about myeloma, **converged on the architecture this project already had**
+(automated labels for immune → light-chain + CNV for malignancy → program scoring for
+substructure = stages 06 → 07 → 10). Genuinely additive from it: the MYC and OXPHOS
+programs, and `CKS1B`/1q21. Treat these tools' disease context as unverified until
+checked.
+
+---
+
 **New data facts confirmed this session (read-only inspection):**
 - All target genes (`TNFRSF17`, `GPRC5D`, `SLAMF7`, `FCRL5`, `SDC1`, `CD38`, `ITGB7`,
   `NCSTN`, `IGKC`) present in **both** reference builds — the intersection costs no

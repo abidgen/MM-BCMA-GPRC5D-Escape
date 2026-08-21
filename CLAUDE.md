@@ -282,7 +282,9 @@ switched to a pure-Python alternative purely for language purity.
 
 ## Environment / tooling — modular envs per pipeline stage
 
-Three environments, split by actual dependency-conflict risk (not one per file):
+Four environments, split by actual dependency-conflict risk (not one per file). Two of
+them exist to quarantine R — `env-qc` for `scDblFinder`, `env-annotation` for
+`SingleR` — so the pure-Python stack never carries an R dependency it doesn't need:
 
 **`envs/env-qc.yml`** — stage 04 only (loading, QC, doublet detection). Isolates
 the R/rpy2 bridge so no other environment needs to carry R at all.
@@ -361,11 +363,37 @@ dependencies:
   - ipykernel
 ```
 
+**`envs/env-annotation.yml`** — stage 06 only. Isolated for the same reason `env-qc`
+is: `SingleR` is R, and R stays quarantined in the environments that actually need it
+rather than being pulled into `mm-core`.
+```yaml
+name: mm-annotation
+channels: [conda-forge, bioconda]
+dependencies:
+  - python=3.12
+  - scanpy=1.11
+  - anndata
+  - celltypist
+  - r-base=4.3.3
+  - rpy2=3.5.11
+  - bioconductor-singler
+  - celldex
+  - anndata2ri
+  - scikit-learn        # ARI / F1 for the annotation comparison
+  - pandas
+  - seaborn
+  - matplotlib
+  - jupyterlab
+  - ipykernel
+```
+`celltypist` also remains in `env-core` — pure Python, no conflict, and convenient if
+labels ever need re-deriving outside stage 06.
+
 Register a distinct Jupyter kernel per env: `python -m ipykernel install --user
---name mm-qc` (and `mm-core`, `mm-communication`).
+--name mm-qc` (and `mm-core`, `mm-annotation`, `mm-communication`).
 
 **If scVI-based integration is ever considered as an alternative to Harmony**, it
-gets its own fourth env (`env-scvi.yml`) — not created yet, only if actually needed.
+gets its own separate env (`env-scvi.yml`) — not created yet, only if actually needed.
 
 ---
 
@@ -378,6 +406,7 @@ used out of stage order:
 src/mm_escape/
 |-- __init__.py
 |-- config.py           # thresholds, gene sets, exclusions, MARKER_PANEL,
+|                        # STATE_PROGRAMS, TC_GENES, ANNOTATION_DECISION,
 |                        # REQUIRED_GENES — env-var overridable, same convention
 |                        # as the R build's lib/00_config.R
 |-- io.py                # manifest loading, the read_mtx wrapper handling this
@@ -420,7 +449,7 @@ because 01-03 are plain file-handling scripts with no need for a notebook:
 | 01-03 | (`scripts/`, not notebooks — data acquisition) | — | `raw/` |
 | 04 | `notebooks/04_qc.ipynb` | `mm-qc` | `results/04_qc/` |
 | 05 | `notebooks/05_integration_clustering.ipynb` | `mm-core` | `results/05_integration/` |
-| 06 | `notebooks/06_annotation.ipynb` | `mm-core` | `results/06_annotation/` |
+| 06 | `notebooks/06_annotation.ipynb` | `mm-annotation` | `results/06_annotation/` |
 | 07 | `notebooks/07_malignant_calling.ipynb` | `mm-core` | `results/07_malignant/` |
 | 08 | `notebooks/08_antigen_escape_fraction.ipynb` | `mm-core` | `results/08_escape_fraction/` |
 | 09 | `notebooks/09_escape_robustness.ipynb` | `mm-core` | `results/09_robustness/` |
@@ -506,10 +535,125 @@ project exists to measure. Therefore:
   calls never touch the embedding).
 
 **06 — Annotation** (`notebooks/06_annotation.ipynb`, `src/mm_escape/annotation.py`;
-env: `mm-core`). `celltypist` and/or marker-panel scoring (`scanpy.tl.score_genes`):
-PlasmaCell (SDC1/CD38/MZB1/XBP1/IRF4), Bcell (MS4A1/CD79A/CD19), Tcell
-(CD3D/CD3E/CD8A/CD4), NK (NCAM1/NKG7/GNLY), Myeloid (CD14/LYZ/ITGAM), Erythroid
-(HBB/GYPA), HSPC (CD34/KIT).
+env: **`mm-annotation`**). **Three methods are run and compared, and the choice is
+made per class against thresholds declared in advance** — the earlier "`celltypist`
+and/or marker-panel scoring" left a load-bearing methodological decision unmade in
+the middle of the pipeline, where it would have been settled implicitly by whatever
+ran first. Follows `sc-best-practices.org`'s annotation chapter
+(https://www.sc-best-practices.org/cellular_structure/annotation.html).
+
+**What is load-bearing here.** The comparison is weighted by what this stage actually
+feeds, which is three things and only three:
+
+| Downstream need | Labels that matter | Cost of getting it wrong |
+|---|---|---|
+| Stage 07 malignant calling | PlasmaCell vs. everything else | Wrong plasma-cell set → wrong denominator for `frac_double_negative` |
+| Stage 08 ambient noise floor | T / NK / myeloid purity | A plasma cell leaking into the "confidently antigen-negative" population inflates the floor and biases every antigen call |
+| Stage 11 confounder control | T/NK abundance, ideally with subsets | Composition artifact misread as immune evasion |
+
+Fine-grained subtypes (CD4 Tcm vs. Tem, etc.) are a bonus only stage 11 benefits from
+and **must never be the reason a method is chosen**.
+
+**Method A — manual, marker-based**, at cluster level (not per cell; clustering
+absorbs dropout, which matters at ~2,044 median genes/cell). `scanpy.tl.score_genes`
+over the project panel: PlasmaCell (SDC1/CD38/MZB1/XBP1/IRF4), Bcell
+(MS4A1/CD79A/CD19), Tcell (CD3D/CD3E/CD8A/CD4), NK (NCAM1/NKG7/GNLY), Myeloid
+(CD14/LYZ/ITGAM), Erythroid (HBB/GYPA), HSPC (CD34/KIT). Then
+`scanpy.pl.dotplot(..., standard_scale="var")` as saved assignment evidence, and
+`scanpy.tl.rank_genes_groups(method="wilcoxon")` + `filter_rank_genes_groups`.
+**The DE step is not optional** — it is the only thing that can surface a population
+the seven-class panel does not cover (pDC, erythroid progenitors, a doublet-driven
+cluster). Record ambiguous clusters as ambiguous rather than forcing them into a class.
+
+**Method B — automated #1, `celltypist`.** Input normalized to 10,000 counts/cell then
+`log1p` (CellTypist's stated requirement); run on **expression**, never the Harmony
+embedding. Enumerate models with `celltypist.models.models_description()` rather than
+assuming names; default pair `Immune_All_Low.pkl` + `Immune_All_High.pkl`, and
+evaluate a healthy-bone-marrow model too if the installed version ships one.
+`celltypist.annotate(..., majority_voting=True, over_clustering=<stage-05 leiden key>)`
+— passing the existing Leiden key is what makes the methods directly comparable (same
+partition, different labelings). Retain `conf_score`.
+
+**Method C — automated #2, `SingleR`** with a hematopoietic reference. Chosen to cover
+CellTypist's expected blind spot rather than duplicate its strengths: `Immune_All_*`
+is immune-only, so its predictable failure is erythroid and HSPC — non-immune marrow
+populations the reference cannot represent. `celldex`'s `NovershternHematopoieticData`
+is built from sorted hematopoietic populations including erythroid and progenitor
+compartments (`HumanPrimaryCellAtlasData` as broader fallback; verify both exist in the
+installed `celldex` rather than assuming). Run with `clusters=<leiden key>` for
+comparability, keeping per-cell scores for pruning diagnostics; retain `pruned.labels`
+and the delta/score matrix as SingleR's own low-confidence signal.
+
+**Two caveats about plasma cells, pointing opposite ways.** The automated references
+contain *normal* plasma cells, not malignant ones, so malignant PCs will be labelled
+"Plasma cells" — correct and sufficient, since separating malignant from normal is
+stage 07's job. Do not expect an auto method to find the tumor or count that against
+it. But conversely: because no malignant class exists in the reference, a heavily
+aneuploid clone with an unusual transcriptome may be labelled something else, or split
+across labels. **Check the plasma-cell marker-coverage test on myeloma marrows
+specifically, not only on the normal-BM controls** — otherwise a systematic failure on
+exactly the cells this project measures passes unnoticed.
+
+**The comparison** (all artifacts to `results/06_annotation/`):
+1. Confusion matrices — manual × CellTypist, manual × SingleR, **CellTypist × SingleR**
+   — at cluster and cell level, plus adjusted Rand index and per-class F1/Jaccard.
+   ARI alone is insufficient: a method can score well overall while failing on plasma
+   cells specifically, the one class that must not be wrong. The two automated methods
+   agreeing with *each other* is the strongest evidence available, since they are
+   independently trained on different references.
+2. **The marker-coverage test — the decisive one.** Dotplot the *manual* panel grouped
+   by each *automated* method's labels. If CellTypist's T cells are CD3D/CD3E-high, its
+   plasma cells MZB1/SDC1-high, its NK cells NKG7/GNLY-high, and so on, the automated
+   labels already encode what the manual panel encodes and manual annotation adds only
+   labor for those classes.
+3. Confidence/coverage report: `conf_score` per cluster, SingleR pruned-`NA` rate and
+   deltas, and the fraction of cells left unassigned or labelled outside the panel.
+
+**The decision rule — per class, declared before looking.** Pre-declaring is the point;
+otherwise "choose the best" becomes post-hoc rationalization of whichever result looks
+tidier. A class goes to an automated method when its marker-coverage test passes, its
+own confidence signal is not flagging the cluster, and agreement with manual clears a
+pre-set bar:
+- **PlasmaCell: F1 ≥ 0.95** — strictest, because it sets the metric's denominator.
+- **T / NK / Myeloid: F1 ≥ 0.90** — these define stage 08's noise floor.
+- **Bcell / Erythroid / HSPC: F1 ≥ 0.85** — nothing downstream is load-bearing on these.
+
+Where both automated methods qualify, take the higher agreement and record that both
+passed. Where neither qualifies, that class falls back to the manual cluster label.
+Expected (to be confirmed, not assumed): immune classes and plasma cells from
+CellTypist, erythroid/HSPC from SingleR or manual. **The numbers decide, not the
+expectation.** Outcome written to `results/06_annotation/annotation_decision.md` with
+the per-class table and the numbers behind it, so the choice is auditable.
+
+**Interface contract — downstream stages read `cell_type` and nothing else:**
+- `obs["cell_type"]` — canonical load-bearing coarse label, the seven project classes.
+- `obs["cell_type_fine"]` — CellTypist fine label where available, else `NA`. Stage 11
+  only; never load-bearing.
+- `obs["annotation_source"]` — per cell: `celltypist` | `singler` | `manual`. Required
+  under the hybrid; without it a mixed-provenance label column is untraceable.
+- `obs["annotation_conf"]` — the winning method's confidence for that cell.
+- `config.ANNOTATION_DECISION` — the per-class method map, so no downstream module
+  branches on annotation logic.
+
+This decoupling is deliberate: the comparison can be redone or reversed later without
+touching stages 07-12.
+
+**Orthogonal cell-state programs — continuous, never categorical.** Identity and state
+are different axes: a cell has one `cell_type` but can carry several active programs at
+once. Score these with `scanpy.tl.score_genes` and store as float `obs` columns —
+**never collapse them into `cell_type`**:
+
+| Program | Why it matters here |
+|---|---|
+| Cell cycle (`MKI67`, `TOP2A`, `PCNA`) | A proliferative escape subclone is a different risk from a quiescent one — feeds stage 10 |
+| Interferon response (`ISG15`, `IFI6`, `STAT1`, `MX1`) | Immune-pressure marker; feeds stage 11's evasion question |
+| Antigen presentation (`B2M`, HLA class I/II) | `B2M` loss is a documented immune-escape route in myeloma. CAR-T is MHC-independent so it does not affect the escape metric, but it is a *competing* evasion mechanism and belongs in the stage 11/12 interpretation |
+| Unfolded-protein response (`XBP1`, `ATF4`, `HSPA5`, `DDIT3`) | Plasma cells are professional secretors; UPR tone is core plasma-cell biology |
+| Hypoxia / stress | Standard confounder — cheap to score, expensive to discover late |
+
+A cycling plasma cell is `cell_type == "PlasmaCell"` **plus** a high cell-cycle score,
+not a separate "Cycling" identity. If any method emits a proliferation label as an
+identity, remap it to PlasmaCell + score.
 
 **Per-patient composition is a first-class output of this stage (new)**, not a
 by-product: malignant-PC fraction of the marrow (tumor burden), and T/NK/myeloid
@@ -646,6 +790,48 @@ scientific payoff** rather than another robustness check.
   a directly actionable, mechanistically grounded finding rather than a descriptive
   one. Registered here, before looking, so it stays a hypothesis test and not a
   post-hoc story.
+- **Malignant-cell program scoring.** Score the malignant compartment on the
+  orthogonal programs defined at stage 06 (cell cycle, IFN, antigen presentation,
+  UPR, hypoxia) plus two that are specifically myeloma-relevant and only meaningful
+  once malignant cells are isolated:
+  - **MYC program** (`MYC` + MYC targets). MYC rearrangement/activation is a
+    recognized progression event in myeloma, which makes "is the escape subclone
+    MYC-high?" a substantive question rather than a generic one.
+  - **Oxidative/metabolic (OXPHOS)**. Standard axis of malignant plasma-cell
+    heterogeneity and a common covariate of proliferation.
+  All remain **continuous scores on malignant cells, never categorical labels** —
+  the identity/state separation established at stage 06 holds here too. A cycling
+  MYC-high escape cell is one cell carrying three scores, not a new cell type.
+- **TC (Translocation/Cyclin D) molecular subgroup, per patient.** Assign from
+  per-patient pseudobulk over malignant cells using the genes whose dysregulation
+  defines the founder event: `CCND1` (t(11;14)), `CCND3` (t(6;14)), `NSD2`/`FGFR3`
+  (t(4;14)), `MAF` (t(14;16)), `MAFB` (t(14;20)), `CCND2`, plus **`CKS1B` as the
+  1q21-gain readout** (which also cross-checks `infercnvpy`'s CNV call on that arm
+  from stage 07). Three reasons this earns its place:
+  1. **Cheap** — ~8 bimodal genes off pseudobulk, versus reconstructing the
+     bulk-array-derived UAMS 7-group signatures (Zhan et al., *Blood* 2006).
+  2. **S1-independent** — gives patient stratification without Supplementary
+     Table S1, which is still unresolved; and when S1 lands the two cross-validate
+     (TC-inferred t(4;14) should match S1's reported t(4;14)).
+  3. **Asks a target-strategy question** — does dual-antigen escape risk concentrate
+     in a molecular subgroup? If t(4;14) or t(11;14) patients carry systematically
+     higher `frac_double_negative`, that speaks directly to who needs a different
+     construct. **A hypothesis the data can test, not a known result.**
+
+  **Assigned per patient from pseudobulk, never per cell.** These signatures come
+  from bulk arrays of purified plasma cells; per-cell assignment on ~2,044-gene cells
+  would be over-claiming. The founder translocation is clonal, so per-patient
+  uniformity is the expectation — a patient splitting across two TC classes is more
+  likely a doublet or patient-mapping artifact than biology, and is flagged as a QC
+  signal rather than reported as heterogeneity.
+
+  **Use it descriptively, not as a statistical stratifier.** At n ≈ 41 patients
+  across ~5 TC classes, an association test is underpowered; the class belongs in
+  the ranked table so a reader can see the high-escape group's composition. Run a
+  formal test only where a group is large enough, and say plainly when it is not.
+  **UAMS 7-group is deliberately not adopted** — it splits an already-small cohort
+  into seven bins to support a test the cohort cannot power, and its signatures need
+  supplement sourcing, while TC delivers most of the interpretive value for far less.
 
 **11 — Cell-cell communication** (`notebooks/11_cellchat_liana.ipynb`,
 `src/mm_escape/communication.py`; env: `mm-communication`). LIANA+ using the
@@ -704,7 +890,7 @@ First actions, in order:
 1. Re-run `scripts/01-03` (unchanged) and confirm `raw/sample_manifest.csv` still
    comes out clean (62 samples, no INCOMPLETE entries) — should be a no-op
    confirmation, not new debugging.
-2. Scaffold `src/mm_escape/` and the three `envs/*.yml` files.
+2. Scaffold `src/mm_escape/` and the four `envs/*.yml` files.
 3. Build `env-qc`, register its kernel, start `notebooks/04_qc.ipynb` against
    `src/mm_escape/io.py` + `qc.py` — validate the loader against 2-3 real sample
    directories before scaling to all 61.
@@ -772,6 +958,31 @@ all-or-nothing:
   of `sc-best-practices`'s tutorial numbers.
 - **`scDblFinder` (R) via an isolated `rpy2` bridge in `env-qc`**, not a
   pure-Python doublet-detection swap.
+- **Annotation is decided empirically, per class, at stage 06** — manual +
+  `celltypist` + `SingleR`, compared, with F1 thresholds declared before looking
+  (PlasmaCell 0.95 / T-NK-myeloid 0.90 / rest 0.85). Not a preference, not an
+  `and/or`. The decision and its numbers live in
+  `results/06_annotation/annotation_decision.md`.
+- **`obs["cell_type"]` (seven coarse classes) is the ONLY load-bearing annotation
+  output.** Everything downstream reads it and nothing else; `cell_type_fine` is for
+  stage 11's convenience and is never load-bearing. This is what lets the annotation
+  decision be revisited without touching stages 07-12.
+- **Identity and state are separate axes.** Cell-cycle / IFN / antigen-presentation /
+  UPR / MYC / OXPHOS are **continuous scores**, never categorical labels, and never
+  leak into `cell_type`. A cycling plasma cell is PlasmaCell + a high score, not a
+  "Cycling" cell type.
+- **No custom `celltypist` model for malignant states.** A regularized linear
+  classifier forces plastic, continuous tumor substructure into discrete bins and
+  hides the intermediates. Malignant identity stays at stage 07 (light-chain +
+  `infercnvpy`); malignant substructure stays at stage 10 (per-patient un-integrated
+  subclustering + pseudobulk DE + `decoupler`). Both are score-and-cluster, not
+  classification.
+- **TC molecular subgroup yes, UAMS 7-group no.** TC is ~8 bimodal genes off
+  per-patient pseudobulk and is S1-independent; UAMS-7 needs bulk-array signature
+  sourcing and splits n≈41 into unpowerable bins. TC is assigned **per patient**, and
+  used **descriptively** — it is not a statistical stratifier at this cohort size.
+- **R stays isolated in its own environments** (`env-qc` for `scDblFinder`,
+  `env-annotation` for `SingleR`) — never merged into `mm-core`.
 - **Malignant calling via light-chain restriction, not clustering alone** — and by
   **ratio**, not presence/absence, because IG genes are the most ambient-contaminated
   in this tissue.
@@ -815,8 +1026,9 @@ all-or-nothing:
   distributional, not a merged ranking.
 - **Logic lives in `src/mm_escape/`, notebooks are thin orchestration**, paired
   via `jupytext`.
-- **Three environments split by actual dependency-conflict risk**
-  (`mm-qc`/`mm-core`/`mm-communication`), not one per pipeline stage.
+- **Four environments split by actual dependency-conflict risk**
+  (`mm-qc`/`mm-core`/`mm-annotation`/`mm-communication`), not one per pipeline stage.
+  Two of them exist purely to quarantine R.
 - **Notebooks and `results/` subdirectories are numbered `04`-`12`, matching
   1:1, continuing straight on from `scripts/01-03`.** `src/mm_escape/` modules
   are named by function, not numbered — different rule for a library vs. a

@@ -65,9 +65,46 @@ far from the middle of that spread — this adapts to the data instead of imposi
 arbitrary number that might not fit.
 
 ### Stage B — Figure out what kind of cell each cell is
-Unchanged. A bone marrow sample isn't just tumor — it's tumor cells mixed in with T
-cells, NK cells, normal B cells, myeloid cells, and more. **Annotation** is the step
-where we label each cell by type, based on which genes it's expressing.
+A bone marrow sample isn't just tumor — it's tumor cells mixed in with T cells, NK
+cells, normal B cells, myeloid cells, and more. **Annotation** is the step where we
+label each cell by type, based on which genes it's expressing.
+
+There are two ways to do this, and we do both. The **manual** way is to look up which
+genes are known to mark each cell type and check which clusters of cells are expressing
+them. The **automatic** way is to use a tool trained on millions of already-labelled
+cells and let it assign labels for you. Automatic is obviously faster — the question is
+whether it's *right* on this particular dataset, and you can't know that by trusting it.
+
+So we run the manual version, two different automatic tools, and then compare all three.
+The decisive check is simple enough to eyeball: take the known marker genes and see
+whether the automatic labels line up with them. If the cells an automatic tool calls
+"T cells" are exactly the cells expressing the known T-cell genes, then it has already
+captured everything the manual approach would have — and doing it by hand is just
+labour. Where it doesn't line up, we keep the manual answer for that cell type.
+
+Two details that matter more than they look:
+
+- **The decision is made separately for each cell type, not once overall.** The tools
+  are expected to fail on *different* cell types — the popular automatic reference is
+  built from immune cells, so it handles T/NK/B/myeloid well but has never seen the
+  red-blood-cell precursors and stem cells that live in marrow. Judging all-or-nothing
+  would mean throwing away good labels for one population because of an unrelated
+  weakness in another.
+- **We write down the pass/fail bar before looking at any results.** Otherwise "pick
+  the best method" quietly turns into "justify whichever one looked nicer." The bar is
+  strictest for plasma cells, because those are the cells the entire project is
+  measuring — get that boundary wrong and every later number inherits the error.
+
+One thing no automatic tool can do here: tell a *cancerous* plasma cell from a healthy
+one. Both look like plasma cells, because the reference data these tools learned from
+only ever contained healthy ones. That's fine — it's Stage C's job, and it needs a
+completely different kind of evidence.
+
+We also record, separately from the cell-type label, what each cell is *doing* — is it
+dividing, is it under stress, is it responding to interferon. A cell has one identity
+but can be doing several of those at once, so they're kept as sliding scales rather than
+being crushed into the identity label. A dividing plasma cell is a plasma cell that
+happens to be dividing, not a third kind of cell.
 
 ### Stage C — Separate malignant plasma cells from normal ones
 Unchanged. Even after identifying "plasma cells," some are the patient's cancer and

@@ -22,7 +22,9 @@ clonal heterogeneity rather than acquired resistance.
 1. Load and QC 62 bone marrow scRNA-seq samples (41 multiple myeloma patients + normal
    controls) from a public target-discovery dataset, using MAD-based (median absolute
    deviation) outlier filtering rather than fixed thresholds.
-2. Integrate across samples (Harmony), cluster, and annotate cell types.
+2. Integrate across samples (Harmony), cluster, and annotate cell types **three ways —
+   manual marker panel, CellTypist, and SingleR — then choose per cell type against
+   agreement thresholds fixed in advance**, rather than trusting one labeller.
 3. Identify malignant plasma cells via immunoglobulin light-chain restriction
    (kappa/lambda clonality) rather than clustering alone.
 4. Score each malignant cell for BCMA and GPRC5D expression against an empirically
@@ -92,12 +94,13 @@ directly rather than leaving it as a caveat.
 
 ## Setup
 
-Three conda/mamba environments, split by actual dependency-conflict risk
+Four conda/mamba environments, split by actual dependency-conflict risk
 (see `CLAUDE.md` for the full reasoning):
 
 ```bash
 mamba env create -f envs/env-qc.yml            # data loading, QC, scDblFinder (via rpy2)
 mamba env create -f envs/env-core.yml          # integration, annotation, malignant calling, scoring, robustness
+mamba env create -f envs/env-annotation.yml    # CellTypist + SingleR (isolates R, like env-qc)
 mamba env create -f envs/env-communication.yml # LIANA+ (CellChat-equivalent)
 # envs/env-composition.yml (scCODA) only if the compositional analysis is run —
 # it pulls TensorFlow and is kept out of mm-core deliberately
@@ -105,6 +108,7 @@ mamba env create -f envs/env-communication.yml # LIANA+ (CellChat-equivalent)
 # register a Jupyter kernel per env
 mamba run -n mm-qc python -m ipykernel install --user --name mm-qc
 mamba run -n mm-core python -m ipykernel install --user --name mm-core
+mamba run -n mm-annotation python -m ipykernel install --user --name mm-annotation
 mamba run -n mm-communication python -m ipykernel install --user --name mm-communication
 ```
 
@@ -123,7 +127,7 @@ python scripts/03_build_manifest.py raw/samples   # build sample -> file-path ma
 |---|---|---|---|
 | 04 | `notebooks/04_qc.ipynb` | `mm-qc` | `results/04_qc/` |
 | 05 | `notebooks/05_integration_clustering.ipynb` | `mm-core` | `results/05_integration/` |
-| 06 | `notebooks/06_annotation.ipynb` | `mm-core` | `results/06_annotation/` |
+| 06 | `notebooks/06_annotation.ipynb` | `mm-annotation` | `results/06_annotation/` |
 | 07 | `notebooks/07_malignant_calling.ipynb` | `mm-core` | `results/07_malignant/` |
 | 08 | `notebooks/08_antigen_escape_fraction.ipynb` | `mm-core` | `results/08_escape_fraction/` |
 | 09 | `notebooks/09_escape_robustness.ipynb` | `mm-core` | `results/09_robustness/` |

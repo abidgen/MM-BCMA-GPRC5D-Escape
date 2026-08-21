@@ -138,12 +138,83 @@ escape fractions themselves.
 
 ---
 
-## Stage 06 — Cell type annotation (`notebooks/06_annotation.ipynb`; env: `mm-core`)
+## Stage 06 — Cell type annotation (`notebooks/06_annotation.ipynb`; env: `mm-annotation`)
 
-`celltypist` and/or manual marker-panel scoring (`scanpy.tl.score_genes`) against
-the same panel used in the R build: PlasmaCell (SDC1/CD38/MZB1/XBP1/IRF4), Bcell
-(MS4A1/CD79A/CD19), Tcell (CD3D/CD3E/CD8A/CD4), NK (NCAM1/NKG7/GNLY), Myeloid
-(CD14/LYZ/ITGAM), Erythroid (HBB/GYPA), HSPC (CD34/KIT).
+**Three annotation methods are run, compared, and chosen between per cell-type
+class.** The earlier plan said "`celltypist` and/or marker-panel scoring" — an `and/or`
+sitting in the middle of the pipeline is an unmade decision, and left alone it gets
+settled implicitly by whichever method happens to run first. This stage makes it
+explicitly and on evidence, following `sc-best-practices.org`'s annotation chapter.
+Note the env change: stage 06 runs under `mm-annotation`, not `mm-core`.
+
+**What the comparison is actually judging.** Not "which annotation is better in
+general" — this stage feeds exactly three things downstream, and the acceptance test is
+weighted accordingly. Stage 07 needs the plasma-cell boundary right, because it sets
+the denominator of the headline metric. Stage 08 needs T/NK/myeloid *purity*, because
+those cells define the ambient noise floor — one plasma cell leaking into that
+"confidently antigen-negative" population inflates the floor and biases every antigen
+call downstream. Stage 11 needs T/NK abundance. Fine-grained subtypes are a bonus and
+must never be why a method wins.
+
+**Method A, manual.** Marker-panel scoring at cluster level (not per cell — clustering
+absorbs dropout, which matters at ~2,044 median genes/cell) against the same panel used
+in the R build: PlasmaCell (SDC1/CD38/MZB1/XBP1/IRF4), Bcell (MS4A1/CD79A/CD19), Tcell
+(CD3D/CD3E/CD8A/CD4), NK (NCAM1/NKG7/GNLY), Myeloid (CD14/LYZ/ITGAM), Erythroid
+(HBB/GYPA), HSPC (CD34/KIT). Plus a Wilcoxon DE pass per cluster — **not optional**,
+because it is the only step that can reveal a population the seven-class panel doesn't
+cover at all.
+
+**Method B, CellTypist.** The `Immune_All_Low`/`Immune_All_High` models with majority
+voting, run over the *existing* Leiden partition so the methods are directly
+comparable — same clusters, different labels.
+
+**Method C, SingleR** against a sorted-hematopoietic reference. Chosen deliberately to
+cover CellTypist's predictable blind spot rather than duplicate its strengths: the
+`Immune_All_*` models are immune-only, so erythroid and HSPC — real bone-marrow
+populations that simply aren't in an immune reference — are where automated annotation
+is most likely to fail here. This costs an R bridge and therefore its own environment,
+the same isolation `env-qc` already applies to scDblFinder.
+
+**Two caveats about plasma cells, pointing opposite ways.** The automated references
+contain *normal* plasma cells only, so malignant PCs get labelled "plasma cell" — which
+is fine, because telling malignant from normal is Stage 07's job, not this one's. Don't
+expect an automated method to find the tumour, and don't hold it against it. But the
+same fact cuts the other way: with no malignant class in the reference, a heavily
+aneuploid clone with an odd transcriptome could be labelled something else entirely, or
+split across labels. So the plasma-cell check has to be run **on myeloma marrows
+specifically**, not just on the healthy controls — otherwise a systematic failure on
+precisely the cells this project measures would sail through unnoticed.
+
+**The decisive test** is the one a reader can check at a glance: take the *manual*
+marker panel and plot it grouped by each *automated* method's labels. If CellTypist's
+T cells are CD3D-high and its plasma cells MZB1/SDC1-high straight down the panel, then
+the automated labels already encode everything the manual panel encodes, and manual
+annotation is adding labour rather than information. Alongside that: confusion matrices
+between all three methods, and per-class agreement scores. **The two automated methods
+agreeing with each other is the strongest evidence available**, since they were trained
+independently on different references — much harder to dismiss than either one matching
+the manual panel.
+
+**The thresholds are declared before looking**, which is the whole point; otherwise
+"pick the best" quietly becomes "justify whichever looked tidier." Plasma cells need
+F1 ≥ 0.95 (strictest, because they set the metric's denominator), T/NK/myeloid ≥ 0.90
+(the noise floor depends on them), everything else ≥ 0.85. The choice is made **per
+class**, not once for the whole stage — the methods are expected to fail on *different*
+classes, so a single verdict would throw away good labels to punish an unrelated
+weakness. Where neither automated method clears the bar for a class, that class falls
+back to manual. The result, with its numbers, is written to
+`results/06_annotation/annotation_decision.md`.
+
+Everything downstream then reads one column, `cell_type`, and never needs to know which
+method produced it — which is what makes the whole comparison reversible later.
+
+**Identity and state are kept as separate axes.** A cell has one identity but can be
+running several programs at once, so cell cycle, interferon response, antigen
+presentation (`B2M` and HLA — `B2M` loss being a real, *competing* immune-escape route
+in myeloma), UPR and stress are scored as **continuous values**, never folded into the
+identity label. A cycling plasma cell is a plasma cell with a high cell-cycle score,
+not a "Cycling" cell type. Collapsing those into categories would throw away exactly
+the intermediate cells that Stage 10 later needs.
 
 Per-patient composition — malignant-PC fraction of the marrow (tumor burden) and
 T/NK/myeloid abundance — is a **first-class output of this stage**, not a
