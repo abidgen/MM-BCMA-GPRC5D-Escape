@@ -1,44 +1,102 @@
-# --- Raw data (large, fully regenerable via scripts/01_download_data.sh) ---
-raw/GSE223060_RAW.tar
-raw/GSE223061_RAW.tar
+# =============================================================================
+# MM Dual-Antigen (BCMA/GPRC5D) escape analysis — Python rebuild
+#
+# Rule of thumb: commit source and small presentable outputs (tables, figures);
+# never commit data or large regenerable binaries.
+#
+# NOTE ON DEPTH: patterns here are deliberately depth-independent (bare
+# `*.h5ad`, not `results/*.h5ad`). A pattern like `results/*.rds` matches ONLY
+# the top level, so `results/04_qc/foo.rds` would slip through — that exact gap
+# previously let 638 MB of nested checkpoints stage in one commit. The pipeline
+# writes into `results/NN_*/` subdirectories, so match by extension at any depth.
+# =============================================================================
+
+# --- Raw data (large, regenerable via scripts/01_download_data.sh) ------------
+raw/*.tar
 raw/unpacked/
 raw/unpacked_bulk/
 raw/samples/
-# Keep the small, useful manifest — it documents what was actually downloaded/found
+# Keep the small manifest — it documents what was actually downloaded/found
 !raw/sample_manifest.csv
 
-# --- Downstream large binary outputs (regenerable by rerunning the pipeline) ---
-results/*.rds
-results/*.h5
-results/*.h5ad
-# Keep small, presentable outputs — tables and figures are the actual deliverables
-!results/*.csv
-!results/*.png
-!results/*.pdf
+# --- Large binary pipeline outputs, at any depth ------------------------------
+# AnnData / HDF5 checkpoints, the bulk of what stages 04-12 produce
+*.h5ad
+*.h5
+*.hdf5
+*.loom
+*.zarr/
+# Serialized intermediates
+*.rds
+*.RData
+*.npy
+*.npz
+*.pkl
+*.pickle
+*.joblib
+*.feather
+*.parquet
+# Everything else under results/ (CSV, PNG, PDF, SVG, JSON, MD) is committed by
+# default — those are the actual deliverables. No negation rules needed, since
+# nothing above excludes a directory.
 
-# --- R artifacts ---
+# --- Notebooks ----------------------------------------------------------------
+# Notebooks are jupytext-paired (percent format). The paired `.py` is the
+# committed, reviewable artifact; the `.ipynb` is a local build product with
+# heavy embedded outputs. See CLAUDE.md's "Code structure" section.
+#
+# To commit notebooks instead, delete the line below and install nbstripout
+# (`nbstripout --install`) so outputs are stripped on commit.
+*.ipynb
+.ipynb_checkpoints/
+.jupyter/
+.virtual_documents/
+
+# --- Python artifacts ---------------------------------------------------------
+__pycache__/
+*.py[cod]
+*.egg-info/
+.eggs/
+build/
+dist/
+.pytest_cache/
+.ruff_cache/
+.mypy_cache/
+.coverage
+htmlcov/
+
+# --- Environments / package managers ------------------------------------------
+.conda/
+.mamba/
+*.conda
+.venv/
+venv/
+# conda envs created in-tree (`-p envs/<name>`); the envs/*.yml specs are source
+envs/*/
+
+# --- R artifacts (rpy2/scDblFinder bridge in env-qc still runs R) -------------
 .Rhistory
-.RData
 .Rproj.user/
 *.Rproj
 .Rprofile
 
-# --- Python artifacts ---
-__pycache__/
-*.pyc
-.ipynb_checkpoints/
+# --- Scratch / local -----------------------------------------------------------
+scratch/
+tmp/
+*.tmp
+*.log
+# ...but a stage's run log is provenance — it records what actually executed,
+# with which thresholds. The R build committed one and it earned its place.
+!results/**/*.log
+.claude/settings.local.json
 
-# --- Environment / package manager caches ---
-.conda/
-.mamba/
-*.conda
+# --- Old/backup script versions ------------------------------------------------
+scripts/__*.sh
+scripts/__*.py
 
-# --- OS / editor cruft ---
+# --- OS / editor cruft ---------------------------------------------------------
 .DS_Store
 Thumbs.db
 .vscode/
 .idea/
-
-# --- Old/backup script versions (already cleaned up, but in case they reappear) ---
-scripts/__*.sh
-scripts/__*.py
+*.swp
