@@ -424,7 +424,7 @@ gets its own separate env (`env-scvi.yml`) — not created yet, only if actually
 
 ---
 
-## Code structure — modular `src/` package + numbered thin notebooks
+## Code structure — notebooks for every stage + a modular `src/` package
 
 **`src/mm_escape/` is an importable package, named by function, NOT numbered** —
 it's a library, not a pipeline sequence, and some modules (e.g. `plotting.py`) get
@@ -468,12 +468,14 @@ is used by stages 08, 09 and 10, which is exactly why it cannot carry a number.
 **Notebooks and results ARE numbered, matching each other 1:1** — this is the
 actual tracking mechanism: notebook `NN_*.ipynb` produces `results/NN_*/`. Numbers
 continue straight on from the existing `scripts/01-03`, so the whole pipeline is
-one unambiguous sequence from `01` to `12`, split across two directories only
-because 01-03 are plain file-handling scripts with no need for a notebook:
+one unambiguous sequence from `01` to `12`. **Every stage is a notebook** — there is
+no stage you cannot open and step through:
 
 | # | Notebook | Env | Output dir |
 |---|---|---|---|
-| 01-03 | (`scripts/`, not notebooks — data acquisition) | — | `raw/` |
+| 01 | `notebooks/01_download_data.ipynb` | `mm-qc` | `raw/` |
+| 02 | `notebooks/02_check_files.ipynb` | `mm-qc` | `raw/` |
+| 03 | `notebooks/03_build_manifest.ipynb` | `mm-qc` | `raw/sample_manifest.csv` |
 | 04 | `notebooks/04_qc.ipynb` | `mm-qc` | `results/04_qc/` |
 | 05 | `notebooks/05_integration_clustering.ipynb` | `mm-core` | `results/05_integration/` |
 | 06 | `notebooks/06_annotation.ipynb` | `mm-annotation` | `results/06_annotation/` |
@@ -499,32 +501,47 @@ single `results/` dump like the R build had. **Phase 2's notebooks/results use a
 ambiguous on disk or in `results/`.
 
 Notebooks are **paired with `jupytext`** (percent format) for git-diffability and
-Codex review — commit the paired `.py` alongside (or instead of, with `.ipynb` in
-`.gitignore`) the notebook, and strip heavy binary outputs (`nbstripout` or a
-pre-commit hook) before committing either way. **All real logic lives in
-`src/mm_escape/`; notebooks import and call, they don't contain the logic
-themselves** — this is what makes Codex review practical (it reviews `.py` diffs,
-not notebook JSON) and avoids the drift that made `mm_dual_antigen_escape_pipeline.md`
-go stale once already in the R build.
+Codex review. The `.ipynb` is gitignored and generated from the committed `.py` — see
+`.gitignore`, which documents how to flip that if you'd rather commit notebooks with
+`nbstripout`.
+
+**Division of labour between notebook and package.** Notebooks are the analysis: they
+carry the narrative, the plots, the intermediate inspection, and the reasoning a reader
+steps through. `src/mm_escape/` holds the parts that earn being a library —
+**reusable** (used by more than one stage), **testable** (worth asserting on
+independently), or **fiddly** (the `read_mtx` loader, symbol harmonization, the
+noise-floor derivation). The test is reuse and testability, not line count: a
+single-use plotting call belongs in the notebook, and duplicating a threshold
+calculation across three notebooks does not.
+
+Two things this protects, and the reason the split exists at all: Codex reviews `.py`
+diffs rather than notebook JSON, and logic with one home cannot drift between copies —
+which is exactly what made `mm_dual_antigen_escape_pipeline.md` go stale once already
+during the R build.
+
+**The whole analysis runs in notebooks, stages 01 through 12.** Decided 2026-08-20:
+every stage is openable and steppable, with nothing hidden behind a bare CLI script.
 
 `scripts/01_download_data.sh`, `02_check_files.sh`, `03_build_manifest.py` are
-reused as-is from the R build — pure bash/Python, zero R or scanpy dependency,
-already solved and verified. Do not rewrite them; the CLI path stays the contract.
+**retained as a CLI fallback**, not deleted — they are already solved and verified, they
+work headlessly (useful for a fresh clone, a remote box, or CI), and the stage 01-03
+notebooks call into them rather than reimplementing them. Do not rewrite the scripts;
+the CLI remains a valid path and its output is the contract.
 
-**One deliberate exception: `notebooks/03_build_manifest.py`** is an interactive
-companion for stage 03, added 2026-08-20. It does **not** reimplement the script — it
-imports `build_manifest()` from it by file path, and writes the manifest on the
-script's exact column schema, so the two produce byte-identical output (verified in
-both directions). It adds three checks worth eyeballing before stage 04: the Cell
-Ranger reference split, the symbol-harmonized intersection preview, and the
-required-gene assertions. Two implementation traps it documents, both real:
+**Notebooks 01-03 wrap the scripts; they must not duplicate their logic.**
+`notebooks/03_build_manifest.py` is the reference pattern: it imports `build_manifest()`
+from `scripts/03_build_manifest.py` by file path and writes the manifest on the script's
+exact column schema, so the two produce byte-identical output (verified both
+directions). It adds what a notebook is *for* — the Cell Ranger reference split, a
+symbol-harmonized intersection preview, and the required-gene assertions that caught the
+`NSD2` drift. Two implementation traps it documents, both hit for real:
 - Under a Jupyter kernel `sys.argv[1]` is `-f`, so the script's module-level `RAW_DIR`
   evaluates to `Path('-f')`. **Always pass paths explicitly**; never use `mf.RAW_DIR`.
-- The manifest must hold **repo-root-relative** paths (it is committed and read on
-  other machines), so the notebook normalizes the absolute paths it must pass in.
+- The manifest must hold **repo-root-relative** paths (it is committed and read on other
+  machines), so the notebook normalizes the absolute paths it must pass in.
 
-The `n_genes_ref` diagnostic it computes is intentionally **not** persisted, since
-adding a column would break schema parity with the script.
+Its `n_genes_ref` diagnostic is intentionally **not** persisted: adding a column would
+break schema parity with the script.
 
 ---
 
@@ -543,8 +560,13 @@ adding a column would break schema parity with the script.
 
 ## Pipeline stages (numbers match notebook filenames and result directories)
 
-**01-03 — Data acquisition.** Unchanged, reused as-is from the R build. Status:
-complete, confirmed working, all 62 samples verified.
+**01-03 — Data acquisition** (`notebooks/01_download_data.ipynb`,
+`02_check_files.ipynb`, `03_build_manifest.ipynb`; env: `mm-qc`). Notebooks wrapping the
+verified `scripts/01-03`, which remain as a CLI fallback. Status: **run and confirmed
+2026-08-20** — 62/62 `triplet-ok`, manifest byte-identical via both paths. Notebook 03
+additionally reports the Cell Ranger reference split and runs the required-gene
+assertions (which is how the `NSD2`/`WHSC1` symbol drift was found). Notebooks 01 and 02
+are not yet written.
 
 **04 — QC + doublets** (`notebooks/04_qc.ipynb`, `src/mm_escape/qc.py`; env:
 `mm-qc`). Custom loader (handles `counts.mtx`/`genes.tsv` naming). QC metrics via
@@ -928,9 +950,11 @@ The final stage; consumes the output of everything upstream. Assembles:
 
 ## Status / immediate next step
 
-**No Python has been implemented yet.** The working tree is clean (R build removed,
-preserved under `r-build-snapshot`), `raw/` is intact at 62 samples, and
-`scripts/01-03` are in place. See `RESUME_HERE.md` for exact session state as work
+**Stages 01-03 are run and verified; nothing from stage 04 onward exists yet.** The
+working tree is clean (R build removed, preserved under `r-build-snapshot`), `raw/` is
+intact at 62 samples, `scripts/01-03` are in place and confirmed (62/62 `triplet-ok`),
+and `notebooks/03_build_manifest.py` exists. `src/mm_escape/` and `envs/` are still
+unscaffolded. See `RESUME_HERE.md` for exact session state as work
 proceeds.
 
 First actions, in order:
@@ -1077,8 +1101,14 @@ all-or-nothing:
 - **GSE117156 must never be merged with GSE223060** (platform mismatch) — runs
   as a fully separate, `phase2_`-prefixed pipeline; comparison is
   distributional, not a merged ranking.
-- **Logic lives in `src/mm_escape/`, notebooks are thin orchestration**, paired
-  via `jupytext`.
+- **The whole analysis runs in notebooks, stages 01-12** — every stage is openable and
+  steppable. `scripts/01-03` are kept as a headless CLI fallback and are *wrapped* by
+  notebooks 01-03, never reimplemented; their output is the contract and byte-identical
+  parity is verified.
+- **Notebooks carry the analysis; `src/mm_escape/` carries what is reusable, testable,
+  or fiddly.** Paired via `jupytext`, `.ipynb` gitignored. This is a deliberate
+  relaxation of the earlier "notebooks are thin orchestration" rule — the goal was never
+  thinness, it was avoiding duplicated logic and keeping review on `.py` diffs.
 - **Four environments split by actual dependency-conflict risk**
   (`mm-qc`/`mm-core`/`mm-annotation`/`mm-communication`), not one per pipeline stage.
   Two of them exist purely to quarantine R.

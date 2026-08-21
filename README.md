@@ -114,8 +114,13 @@ mamba run -n mm-communication python -m ipykernel install --user --name mm-commu
 
 ## Pipeline
 
-Numbering is continuous and 1:1 with output directories — `notebooks/NN_*.ipynb`
-always writes to `results/NN_*/`, starting right after `scripts/01-03`:
+**The whole analysis runs in notebooks, stages 01 through 12** — every stage is
+openable and steppable. Numbering is continuous and 1:1 with output directories:
+`notebooks/NN_*.ipynb` writes to `results/NN_*/`.
+
+Notebooks 01-03 wrap the verified acquisition scripts rather than reimplementing them,
+so the scripts stay available as a headless CLI fallback (fresh clone, remote box, CI)
+and both paths produce byte-identical output:
 
 ```bash
 bash scripts/01_download_data.sh        # download + unpack from GEO
@@ -123,13 +128,11 @@ bash scripts/02_check_files.sh          # confirm per-sample file structure
 python scripts/03_build_manifest.py raw/samples   # build sample -> file-path manifest
 ```
 
-`notebooks/03_build_manifest.ipynb` is an interactive companion to that last step — it
-imports the script's `build_manifest()` and writes the same manifest byte-for-byte,
-adding the Cell Ranger reference split, a symbol-harmonized intersection preview, and
-required-gene assertions. Either path works; the CLI remains the contract.
-
 | # | Notebook | Env | Output |
 |---|---|---|---|
+| 01 | `notebooks/01_download_data.ipynb` | `mm-qc` | `raw/` |
+| 02 | `notebooks/02_check_files.ipynb` | `mm-qc` | `raw/` |
+| 03 | `notebooks/03_build_manifest.ipynb` | `mm-qc` | `raw/sample_manifest.csv` |
 | 04 | `notebooks/04_qc.ipynb` | `mm-qc` | `results/04_qc/` |
 | 05 | `notebooks/05_integration_clustering.ipynb` | `mm-core` | `results/05_integration/` |
 | 06 | `notebooks/06_annotation.ipynb` | `mm-annotation` | `results/06_annotation/` |
@@ -159,11 +162,9 @@ behind each stage.
 ├── mm_analysis_overview.md                # plain-language explanation of the approach
 ├── mm_dual_antigen_escape_pipeline.md     # pipeline walkthrough (narrative, not code)
 ├── envs/                                  # three conda env specs, split by dependency risk
-├── src/mm_escape/                         # all analysis logic — importable, Codex-reviewable
-├── notebooks/                             # numbered 04-12, jupytext-paired with src/
-│                                          #   (+ 03_build_manifest, an interactive
-│                                          #    companion to scripts/03 — same output)
-├── scripts/                               # 01-03, data acquisition (reused unchanged from the R build)
+├── src/mm_escape/                         # reusable/testable logic — importable, Codex-reviewable
+├── notebooks/                             # numbered 01-12, jupytext-paired (.ipynb gitignored)
+├── scripts/                               # 01-03 acquisition — CLI fallback, wrapped by notebooks 01-03
 ├── raw/                                   # data (gitignored — regenerate via scripts/01)
 └── results/                               # numbered 04-12, matching notebooks 1:1 (gitignored)
 ```

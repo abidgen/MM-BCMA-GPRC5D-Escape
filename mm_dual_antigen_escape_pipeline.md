@@ -27,8 +27,9 @@ working tree (preserved in git under the `r-build-snapshot` tag); only `raw/` an
 
 **Numbering note:** stage numbers below match notebook filenames and their
 `results/NN_*/` output directory one-to-one (`notebooks/04_qc.ipynb` ->
-`results/04_qc/`, etc.), continuing straight on from `scripts/01-03`. This is
-deliberate — it's the actual mechanism for tracking pipeline order end to end.
+`results/04_qc/`, etc.). This is deliberate — it's the actual mechanism for tracking
+pipeline order end to end. **Every stage from 01 to 12 is a notebook**; there is no
+stage you cannot open and step through.
 **Number order is execution order** — 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12,
 with no exceptions. Nothing runs out of sequence.
 
@@ -44,16 +45,27 @@ directions.
 
 ---
 
-## Stages 01-03 — Data acquisition (`scripts/01_download_data.sh`, `02_check_files.sh`, `03_build_manifest.py`)
+## Stages 01-03 — Data acquisition (`notebooks/01_download_data.ipynb`, `02_check_files.ipynb`, `03_build_manifest.ipynb`; env: `mm-qc`)
 
-Reused unchanged from the R build — pure bash/Python file handling with no R or
-scanpy dependency. Downloads and unpacks `GSE223060_RAW.tar` /
-`GSE223061_RAW.tar` from GEO's FTP, verifies per-sample file structure, and builds
-`raw/sample_manifest.csv` mapping each sample ID to its exact
-`barcodes.tsv`/`genes.tsv`/`counts.mtx` paths.
+Downloads and unpacks `GSE223060_RAW.tar` / `GSE223061_RAW.tar` from GEO's FTP, verifies
+per-sample file structure, and builds `raw/sample_manifest.csv` mapping each sample ID to
+its exact `barcodes.tsv`/`genes.tsv`/`counts.mtx` paths.
 
-Status: complete, confirmed working, all 62 samples verified (against the R
-build's run — re-confirm identically in this repo as the very first step).
+These three run as notebooks like every other stage, but they **wrap** the original
+bash/Python scripts rather than reimplementing them. The scripts were already solved and
+verified against the real archive, they run headlessly (which a notebook does not — useful
+for a fresh clone or a remote box), and having one implementation means the two paths
+cannot disagree. Byte-identical output is verified in both directions, so `scripts/01-03`
+stay in the repo as a CLI fallback.
+
+**Status: run and confirmed 2026-08-20.** All 62 samples `triplet-ok`, nothing
+re-downloaded, manifest reproduced exactly.
+
+Notebook 03 does more than the script it wraps, which is the point of having it: it
+reports the Cell Ranger reference split, previews the symbol-harmonized gene intersection,
+and runs the required-gene assertions. Those assertions are what surfaced the `NSD2`
+symbol drift described under Stage 05 — a defect two earlier builds of this project had
+walked straight past.
 
 ---
 

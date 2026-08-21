@@ -66,6 +66,32 @@ and this cohort's median cell has ~2,044 detected genes.
    attempt retrieval when stage 08 aggregation is reached. S1 no longer blocks the
    pipeline, only four specific items (see `CLAUDE.md`'s S1 policy).
 
+## 2026-08-20 — architecture: the whole analysis runs in notebooks (01-12)
+
+**Decision.** Every stage is a notebook, 01 through 12 — nothing left as a bare CLI
+script you can't open and step through. `scripts/01-03` are **kept as a headless CLI
+fallback** (fresh clone, remote box, CI) and are *wrapped* by notebooks 01-03, never
+reimplemented; byte-identical output is verified both directions.
+
+**`src/mm_escape/` is retained.** The earlier rule "notebooks are thin orchestration" is
+deliberately relaxed: notebooks now carry the analysis — narrative, plots, intermediate
+inspection. `src/mm_escape/` holds what earns being a library: **reusable** (used by
+more than one stage), **testable** (worth asserting on independently), or **fiddly**
+(the `read_mtx` loader, symbol harmonization, the noise-floor derivation). The test is
+reuse and testability, **not line count** — a one-off plot belongs in the notebook; a
+threshold used by three stages does not.
+
+The two things this protects, unchanged from the original rationale: Codex reviews `.py`
+diffs rather than notebook JSON, and logic with a single home cannot drift between
+copies.
+
+**To write:** `notebooks/01_download_data.ipynb` and `02_check_files.ipynb` (wrapping
+the two bash scripts — likely thin, since those scripts are pure file handling).
+`03_build_manifest` already exists and is the reference pattern for how 01/02 should
+wrap their scripts.
+
+---
+
 ## 2026-08-20 — stages 01-03 executed; symbol-drift defect found
 
 **First actual execution this rebuild.** `scripts/01_download_data.sh` and
@@ -75,9 +101,11 @@ present, 0 re-downloaded, 0 re-extracted, all **62 `triplet-ok`**, no INCOMPLETE
 archive uses `counts.mtx`. Cosmetic, not missing data.)
 
 **`notebooks/03_build_manifest.py` added** (percent-format; `.ipynb` is gitignored and
-generated from it). `CLAUDE.md` rules out notebook-ifying stages 01-03, so this is an
-*additional* interactive view, not a replacement: it imports `build_manifest()` from
-the script and writes the manifest on the script's exact schema. **Byte-identical
+generated from it). At the time `CLAUDE.md` still ruled out notebook-ifying stages
+01-03, so this began as an *additional* interactive view — **since superseded by the
+full-notebook decision above**, which makes it the reference pattern for how notebooks
+01-03 wrap their scripts. Either way it imports `build_manifest()` from the script and
+writes the manifest on the script's exact schema. **Byte-identical
 output verified in both directions.** Two traps documented in it, both real and both
 hit during development:
 - Under a Jupyter kernel `sys.argv[1]` is `-f`, so the script's module-level `RAW_DIR`
@@ -197,8 +225,10 @@ directory were removed. Everything is recoverable from the **`r-build-snapshot`*
 
 1. ~~**Re-run `scripts/01-03`**~~ — **DONE 2026-08-20.** 62/62 `triplet-ok`, manifest
    verified byte-identical via both the CLI and `notebooks/03_build_manifest.ipynb`.
-2. **Scaffold the repo**: `src/mm_escape/` package skeleton, `envs/env-qc.yml`,
-   `envs/env-core.yml`, `envs/env-communication.yml`, `notebooks/`.
+2. **Scaffold the repo**: `src/mm_escape/` package skeleton and the four env files
+   (`env-qc`, `env-core`, `env-annotation`, `env-communication`). `notebooks/` exists.
+   Write `notebooks/01_download_data.ipynb` and `02_check_files.ipynb` wrapping their
+   scripts, following the `03_build_manifest` pattern.
 3. **Build `env-qc`**, register its Jupyter kernel (`mm-qc`).
 4. **Write `src/mm_escape/io.py`**: the loader replacing `scanpy.read_10x_mtx()`.
    Handles `counts.mtx` (not `matrix.mtx`), single-column `genes.tsv`, the extra
@@ -271,6 +301,6 @@ natively reimplements CellChat's own algorithm).
 ## Status
 
 Working tree clean, architecture decided, **scope expanded and all five `.md` files
-updated (2026-08-20)**, no Python executed yet. This file will keep growing the way
+updated (2026-08-20)**, stages 01-03 run and verified. This file will keep growing the way
 the R build's did — exact numbers, bugs found and fixed, open decisions — as each
 stage actually runs.
