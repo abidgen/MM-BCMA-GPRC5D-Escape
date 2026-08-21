@@ -1,7 +1,11 @@
 # RESUME HERE — MM Dual-Antigen pipeline (Python rebuild), session state
 
-**Last updated:** 2026-08-20
-**Branch:** `main` (working tree clean — R build removed, tagged `r-build-snapshot`)
+**Last updated:** 2026-08-21
+**Branch:** `review3-stage08-corrections` — one unmerged commit (doc corrections).
+`main` holds everything else. Working tree clean.
+
+**To resume:** `git checkout main && git merge --ff-only review3-stage08-corrections`
+(or review the diff first), then start at "Immediate next actions".
 
 Read `CLAUDE.md` first for the settled decisions and data ground truth. This file
 covers only *where execution stands* and *what to do next*.
@@ -15,9 +19,18 @@ verified on all 62 samples, QC/doublet-removal run on the full 61-sample cohort,
 integration not yet run) before switching to Python. **None of the R code is being
 ported.** All dataset knowledge carries forward via `CLAUDE.md`.
 
-**Stages 01-03 have now been run** (62/62 `triplet-ok`, manifest rebuilt and verified
-byte-identical). Nothing from stage 04 onward exists yet — `src/` and `envs/` are still
-unscaffolded. One real defect surfaced: cross-reference HGNC symbol drift, see below.
+**Stages 01-03 are complete: written, executed, asserted, committed.** All three
+notebooks exist and run green (62/62 `triplet-ok`, manifest byte-identical via CLI and
+notebook). The four conda envs are built and their kernels registered. `src/mm_escape/`
+has `config.py` + `gene_space.py` scaffolded and tested against the real files.
+
+**Stage 04 onward does not exist yet.** The next artifact to write is
+`src/mm_escape/io.py`.
+
+Three real defects have surfaced so far, all fixed: cross-reference HGNC symbol drift
+(solved properly via Ensembl-ID reconstruction), a wrong bulk RNA-seq inventory in
+`CLAUDE.md`, and a circular dropout-correction formula in the stage 08 plan. Details
+below.
 
 ---
 
@@ -225,12 +238,12 @@ directory were removed. Everything is recoverable from the **`r-build-snapshot`*
 
 1. ~~**Re-run `scripts/01-03`**~~ — **DONE 2026-08-20.** 62/62 `triplet-ok`, manifest
    verified byte-identical via both the CLI and `notebooks/03_build_manifest.ipynb`.
-2. **Scaffold the repo**: `src/mm_escape/` package skeleton and the four env files
-   (`env-qc`, `env-core`, `env-annotation`, `env-communication`). `notebooks/` exists.
-   Write `notebooks/01_download_data.ipynb` and `02_check_files.ipynb` wrapping their
-   scripts, following the `03_build_manifest` pattern.
-3. **Build `env-qc`**, register its Jupyter kernel (`mm-qc`).
-4. **Write `src/mm_escape/io.py`**: the loader replacing `scanpy.read_10x_mtx()`.
+2. ~~**Scaffold the repo**~~ — **DONE 2026-08-21.** Five env ymls written; four built.
+   `src/mm_escape/` has `__init__.py`, `config.py` (partial — gene-space constants
+   only) and `gene_space.py`. Notebooks 01 and 02 written, executed, committed.
+3. ~~**Build `env-qc`**, register kernels~~ — **DONE 2026-08-21.** All four built and
+   registered; every key package import-verified, both R bridges confirmed working.
+4. **>> START HERE << Write `src/mm_escape/io.py`**: the loader replacing `scanpy.read_10x_mtx()`.
    Handles `counts.mtx` (not `matrix.mtx`), single-column `genes.tsv`, the extra
    nesting level per sample. Validate against 2-3 real samples before scaling to
    all 61 — most likely place for a silent format-assumption bug to hide.
@@ -241,9 +254,10 @@ directory were removed. Everything is recoverable from the **`r-build-snapshot`*
 6. Continue through stages 05-12 per `CLAUDE.md`'s pipeline section — notebook
    number N always writes to `results/N_*/`, nothing else. Run them in numeric
    order; number order is execution order.
-7. **Apply the 2026-08-21 review corrections** as each stage is written — they are
-   documented in place in `CLAUDE.md`, not collected in one section. Summary in
-   "Second design review" below.
+7. **Apply the review corrections** as each stage is written — they are documented in
+   place in `CLAUDE.md`, not collected in one section. Summaries in "Second design
+   review" and "Third design review" below. Stage 08 carries the most of them; read
+   both summaries before writing it.
 
 ### Presentable stopping points
 
@@ -378,9 +392,102 @@ subtypes**, never translocation calls.
   continuing on from `scripts/01-03`. `src/mm_escape/` modules are named by
   function, not numbered.
 
+## 2026-08-21 — envs built, gene space solved, notebooks 01-02, third review
+
+Four things happened. Everything is committed.
+
+### 1. Ensembl-ID reconstruction — the symbol-drift problem is properly solved
+
+The 2026-08-20 fix was a 4-gene alias map. That was a patch. The real fix: the deposit
+has no ID column (`genes.tsv` is symbol-only, **zero `ENSG` strings across all 62
+samples** — do not go looking), but there are only **three distinct gene files in the
+whole cohort**, byte-identical within group, each a positional dump of a public
+reference. So the IDs are reconstructible and this was verified end to end:
+
+    Ensembl 93 GTF -> 10x mkgtf biotype filter, GTF order -> Seurat's gsub("_","-")
+      -> R make.unique -> assert == deposited column, position for position
+
+**0 mismatches / 33538 rows and 0 mismatches / 33694 rows.** Self-certifying: a wrong
+release or filter changes the count or order and fails loudly.
+
+| join key | genes retained |
+|---|---|
+| raw symbols | 22,164 |
+| symbols + 4-gene alias map | 22,168 |
+| **Ensembl IDs** | **32,991**  (+10,827, ~49% more) |
+
+11,140 intersected IDs carry a different symbol in each build. It also proved the
+mis-pairing risk is real, not theoretical: `TBCE` is `ENSG00000285053` in the 33538
+build and `ENSG00000116957` in the 33694 build — a symbol join silently merges two
+different annotation entries.
+
+Committed: `resources/gene_space/` (~1 MB gzipped, so the 41-44 MB GTFs never need
+re-downloading) and `src/mm_escape/gene_space.py`. Pipeline is four calls in order:
+`attach_ensembl_ids` -> `intersect_gene_space` -> `to_canonical_symbols` ->
+`assert_required_genes`. Four failure paths confirmed to raise.
+
+**`var_names_make_unique()` is banned on these objects** — it assigns bare-vs-suffixed
+names by row position, exactly the mangling being undone. The 9 symbols still colliding
+after the ID intersection get `SYMBOL__ENSG...`.
+
+### 2. Environments built and verified — see the Environments section above
+
+Two of the four were unusable as specified (`import liana` failed outright;
+`decoupler` failed under numba 0.67). Both fixed in the ymls.
+
+### 3. Notebooks 01 and 02 written; bulk inventory corrected
+
+Both execute clean against the real data. Scripts 01/02 are bash, so these notebooks
+`subprocess` out to them rather than importing a function as notebook 03 does.
+
+Notebook 01's assertion immediately caught an error in `CLAUDE.md`'s ground truth:
+recorded as "18 MMRF + 12 WashU = 30 usable" bulk samples; actually **13** WashU
+`.tar.gz` and 18 MMRF TPM (2 of which are the known 114-byte stubs), so **(18-2)+13 =
+29 usable**. The old figure was wrong twice — the WashU count, and the total never
+subtracted the stubs. Both corrected.
+
+The inherited "~28 samples overlap with the scRNA cohort" is now flagged **unverified**
+— it depends on the three bulk/sc ID mismatches and the unresolved S1 mapping. Stage 09
+recomputes it rather than quoting it.
+
+Notebook 02 also asserts there are exactly **3 distinct `genes.tsv` checksums**, so a
+new reference build fails loudly instead of merging silently.
+
+Notebook 03's kernelspec was an R-build leftover (`mm-dual-antigen`) -> `mm-qc`.
+
+### 4. Third design review — one real methodological error, fixed
+
+Details in `CLAUDE.md` stage 08. The headline: the proposed "dropout-adjusted expected
+DN", `sum_i P_i(BCMA-) * P_i(GPRC5D-)`, was **circular** — it assumes exactly the
+independence the co-escape test exists to interrogate. Consequences:
+
+- That quantity and the "expected DN under depth-conditioned independence" are the
+  **same number**, specified twice. Reported once now, as a technical baseline.
+- **No dropout-corrected DN point estimate is produced, and none is claimed.** Dropout
+  is *bounded* (sensitivity band, false-negative floor, depth regression, downsampling),
+  not corrected. The honest correction is a latent-class/EM model over the four true
+  states — specified in `CLAUDE.md`, deliberately deferred, not on the critical path.
+- **Bootstrap level was wrong**: a CI *for patient A* conditions on patient A, so
+  patient is fixed. Per-patient CI = **sample -> cell**; cohort-level =
+  **patient -> sample -> cell**. Single-sample patients get optimistic CIs; say so.
+- **Co-escape was over-read**: it measures *eroded complementarity*, not futility.
+  Adding GPRC5D to BCMA still moves 30% -> 15% under strong co-loss. So
+  **incremental coverage gain** `P(A-) - P(A- and B-)` is now reported beside it and
+  sits above co-escape in the hierarchy — it is what a target decision turns on.
+- **No composite risk score anywhere**, including the coverage matrix.
+
+---
+
 ## Status
 
-Working tree clean, architecture decided, **scope expanded and all five `.md` files
-updated (2026-08-20)**, stages 01-03 run and verified. This file will keep growing the way
-the R build's did — exact numbers, bugs found and fixed, open decisions — as each
-stage actually runs.
+Stages 01-03 complete and green. Envs built, kernels registered, gene space solved and
+committed. Architecture stable — the third review round hit wording and interpretation
+rather than method, which is the signal the plan is ready to implement against.
+
+**Next artifact: `src/mm_escape/io.py`.** Validate on `MMRF_1695` (33538 build),
+`27522_1` (33694 build) and `BM4` (normal-BM control) before scaling to all 61 — those
+three cover the failure modes. It is also the first genuine integration test of
+`gene_space.py`, which has never touched a real count matrix.
+
+This file will keep growing the way the R build's did — exact numbers, bugs found and
+fixed, open decisions — as each stage actually runs.
