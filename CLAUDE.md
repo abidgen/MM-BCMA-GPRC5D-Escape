@@ -135,7 +135,34 @@ merged naively, every cell in that sample would read as BCMA-negative for a pure
 technical reason. **Decision: exclude `56203_1`.** Patient 56203 is still fully
 covered by `56203_2` (complete 33694-gene reference) — zero patient coverage lost.
 
-**The 33538- and 33694-gene reference sets share only 22164 genes.** A union merge
+**CRITICAL — the two references also use different HGNC symbol vintages, so a naive
+symbol intersection silently drops genes present in BOTH builds.** Confirmed
+2026-08-20 by direct comparison, and caught by the stage-03 notebook's required-gene
+assertions rather than by inspection — which is the argument for keeping those
+assertions:
+
+| 33538 (newer symbols) | 33694 (older symbols) | consequence if unharmonized |
+|---|---|---|
+| `NSD2`    | `WHSC1`   | **t(4;14) becomes uncallable** — the highest-risk MM translocation, and the `MS` class of the TC subgrouping at stage 10 |
+| `TENT5C`  | `FAM46C`  | loses a recurrently-deleted MM tumour suppressor (1p12) |
+| `NSD3`    | `WHSC1L1` | a **different gene** from NSD2 — do not conflate the two |
+| `ATP5F1A` | `ATP5A1`  | OXPHOS program member (stage 10) |
+
+**Decision: canonicalize gene symbols BEFORE intersecting**, in
+`src/mm_escape/gene_space.py`. Harmonizing recovers all four (22,164 → 22,168 genes).
+The four above are the ones this project's gene lists depend on; a fuller HGNC-based
+reconciliation is worth doing in `gene_space.py` since the same drift certainly affects
+genes outside the required set. **Never assume a missing required gene is biologically
+absent — check for a legacy symbol first.**
+
+Note also that the ~11.4k/11.5k symbols unique to each build are dominated by
+**annotation-version noise** — versioned clone identifiers such as `AC000032.1` vs
+`AC000032.2` — not genuinely absent genes. So 22,164 *understates* the recoverable gene
+space. That is tolerable for lncRNA/clone entries (HVG selection never reaches them) but
+was not tolerable for `NSD2`, which is exactly why the assertions exist.
+
+**The 33538- and 33694-gene reference sets share only 22164 genes** *on raw symbols*
+(22,168 after harmonization). A union merge
 across retained samples would make ~11k genes structurally zero in whole sample
 cohorts — indistinguishable downstream from a true biological zero, which is
 exactly the quantity this project measures. **Decision: intersect gene sets across
@@ -482,7 +509,22 @@ go stale once already in the R build.
 
 `scripts/01_download_data.sh`, `02_check_files.sh`, `03_build_manifest.py` are
 reused as-is from the R build — pure bash/Python, zero R or scanpy dependency,
-already solved and verified. Do not rewrite; do not notebook-ify them.
+already solved and verified. Do not rewrite them; the CLI path stays the contract.
+
+**One deliberate exception: `notebooks/03_build_manifest.py`** is an interactive
+companion for stage 03, added 2026-08-20. It does **not** reimplement the script — it
+imports `build_manifest()` from it by file path, and writes the manifest on the
+script's exact column schema, so the two produce byte-identical output (verified in
+both directions). It adds three checks worth eyeballing before stage 04: the Cell
+Ranger reference split, the symbol-harmonized intersection preview, and the
+required-gene assertions. Two implementation traps it documents, both real:
+- Under a Jupyter kernel `sys.argv[1]` is `-f`, so the script's module-level `RAW_DIR`
+  evaluates to `Path('-f')`. **Always pass paths explicitly**; never use `mf.RAW_DIR`.
+- The manifest must hold **repo-root-relative** paths (it is committed and read on
+  other machines), so the notebook normalizes the absolute paths it must pass in.
+
+The `n_genes_ref` diagnostic it computes is intentionally **not** persisted, since
+adding a column would break schema parity with the script.
 
 ---
 
@@ -513,8 +555,11 @@ individually (mirrors the R build's resumable-per-sample design).
 
 **05 — Gene-space intersection, integration, clustering**
 (`notebooks/05_integration_clustering.ipynb`, `src/mm_escape/gene_space.py` +
-`integration.py`; env: `mm-core`). Intersect gene sets across retained samples
-(hard-fail with specifics if required genes don't survive).
+`integration.py`; env: `mm-core`). **Canonicalize gene symbols first, then** intersect
+gene sets across retained samples (hard-fail with specifics if required genes don't
+survive). The harmonization step is not optional — see the Data section's symbol-drift
+table; without it `NSD2` is dropped and stage 10 loses t(4;14) entirely. Report how many
+genes the harmonization recovers, so a regression here is visible rather than silent.
 `anndata.concat(join="inner")`. Normalize, HVG, PCA, `harmonypy` keyed on
 `patient_id` **with `n_genes_ref` as an additional covariate**, Leiden clustering,
 UMAP. Diagnostic UMAP colored by reference version (`n_genes_ref`) to confirm the
@@ -805,6 +850,8 @@ scientific payoff** rather than another robustness check.
 - **TC (Translocation/Cyclin D) molecular subgroup, per patient.** Assign from
   per-patient pseudobulk over malignant cells using the genes whose dysregulation
   defines the founder event: `CCND1` (t(11;14)), `CCND3` (t(6;14)), `NSD2`/`FGFR3`
+  (**`NSD2` is `WHSC1` in the older reference — depends on stage 05's symbol
+  harmonization; without it this class cannot be called at all**)
   (t(4;14)), `MAF` (t(14;16)), `MAFB` (t(14;20)), `CCND2`, plus **`CKS1B` as the
   1q21-gain readout** (which also cross-checks `infercnvpy`'s CNV call on that arm
   from stage 07). Three reasons this earns its place:
@@ -958,6 +1005,12 @@ all-or-nothing:
   of `sc-best-practices`'s tutorial numbers.
 - **`scDblFinder` (R) via an isolated `rpy2` bridge in `env-qc`**, not a
   pure-Python doublet-detection swap.
+- **Gene symbols are canonicalized before the gene-space intersection.** The two
+  Cell Ranger references use different HGNC vintages; intersecting raw symbols drops
+  `NSD2`/`WHSC1`, `TENT5C`/`FAM46C`, `NSD3`/`WHSC1L1`, `ATP5F1A`/`ATP5A1`. A missing
+  required gene means "check for a legacy symbol", not "biologically absent".
+- **The required-gene assertions stay, and stay loud.** They caught the `NSD2` drift
+  that manual inspection had missed across two prior builds of this project.
 - **Annotation is decided empirically, per class, at stage 06** — manual +
   `celltypist` + `SingleR`, compared, with F1 thresholds declared before looking
   (PlasmaCell 0.95 / T-NK-myeloid 0.90 / rest 0.85). Not a preference, not an

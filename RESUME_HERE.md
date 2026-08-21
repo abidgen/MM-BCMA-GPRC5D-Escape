@@ -15,8 +15,9 @@ verified on all 62 samples, QC/doublet-removal run on the full 61-sample cohort,
 integration not yet run) before switching to Python. **None of the R code is being
 ported.** All dataset knowledge carries forward via `CLAUDE.md`.
 
-**Nothing has been run in Python yet.** The tree is ready for it: `raw/` intact at
-62 samples, `scripts/01-03` in place, nothing else in the way.
+**Stages 01-03 have now been run** (62/62 `triplet-ok`, manifest rebuilt and verified
+byte-identical). Nothing from stage 04 onward exists yet — `src/` and `envs/` are still
+unscaffolded. One real defect surfaced: cross-reference HGNC symbol drift, see below.
 
 ---
 
@@ -64,6 +65,60 @@ and this cohort's median cell has ~2,044 detected genes.
    mapping, labelling every S1-dependent number provisional *in the output itself*;
    attempt retrieval when stage 08 aggregation is reached. S1 no longer blocks the
    pipeline, only four specific items (see `CLAUDE.md`'s S1 policy).
+
+## 2026-08-20 — stages 01-03 executed; symbol-drift defect found
+
+**First actual execution this rebuild.** `scripts/01_download_data.sh` and
+`02_check_files.sh` ran as the predicted no-op confirmation: 62/62 archives already
+present, 0 re-downloaded, 0 re-extracted, all **62 `triplet-ok`**, no INCOMPLETE.
+(`01`'s summary prints `Matrix files: 0` — its counter globs `*matrix*` while this
+archive uses `counts.mtx`. Cosmetic, not missing data.)
+
+**`notebooks/03_build_manifest.py` added** (percent-format; `.ipynb` is gitignored and
+generated from it). `CLAUDE.md` rules out notebook-ifying stages 01-03, so this is an
+*additional* interactive view, not a replacement: it imports `build_manifest()` from
+the script and writes the manifest on the script's exact schema. **Byte-identical
+output verified in both directions.** Two traps documented in it, both real and both
+hit during development:
+- Under a Jupyter kernel `sys.argv[1]` is `-f`, so the script's module-level `RAW_DIR`
+  becomes `Path('-f')`. Pass paths explicitly; never use `mf.RAW_DIR`.
+- The manifest must hold repo-root-relative paths (it is committed and read elsewhere),
+  so the notebook normalizes the absolute paths it has to pass in.
+
+### The finding: cross-reference HGNC symbol drift
+
+The notebook's required-gene assertions **failed on `NSD2`** — and the cause was not a
+missing gene. The two Cell Ranger references use different HGNC symbol vintages, so
+genes present in *both* builds under different names are dropped by a naive symbol
+intersection:
+
+| 33538 (newer) | 33694 (older) | consequence |
+|---|---|---|
+| `NSD2`    | `WHSC1`   | **t(4;14) uncallable** — highest-risk MM translocation, and stage 10's `MS` TC class |
+| `TENT5C`  | `FAM46C`  | loses a recurrently-deleted MM tumour suppressor (1p12) |
+| `NSD3`    | `WHSC1L1` | a *different* gene from NSD2 — do not conflate |
+| `ATP5F1A` | `ATP5A1`  | OXPHOS program member |
+
+**Fix: canonicalize symbols before intersecting** (22,164 → 22,168 genes). Belongs in
+`src/mm_escape/gene_space.py`; the notebook carries a targeted version covering the
+genes this project needs. A fuller HGNC reconciliation is worth doing there, since the
+same drift certainly affects genes outside the required set.
+
+**Rule going forward: a missing required gene means "check for a legacy symbol" before
+concluding "biologically absent".** Two prior builds of this project missed this; the
+assertions caught it in minutes, which is the argument for keeping them loud.
+
+Also confirmed: the ~11.4k/11.5k symbols unique to each build are dominated by
+annotation-version noise (`AC000032.1` vs `AC000032.2`), so **22,164 understates the
+recoverable gene space** — fine for lncRNA/clone entries, not fine for named genes.
+
+**Stopgap kernel.** `envs/` is still unscaffolded, so the notebook was validated
+against the leftover `mm-dual-antigen` conda env (pandas 2.2.2, py3.11) and a kernel of
+that name was registered. **Replace with `mm-qc`/`mm-core`/`mm-annotation`/
+`mm-communication` once `envs/*.yml` are built** — the notebook's kernelspec will need
+repointing.
+
+---
 
 ## 2026-08-20 — stage 06 annotation methodology settled
 
@@ -140,8 +195,8 @@ directory were removed. Everything is recoverable from the **`r-build-snapshot`*
 
 ## Immediate next actions, in order
 
-1. **Re-run `scripts/01-03`** to confirm `raw/sample_manifest.csv` still comes out
-   clean (62 samples, no INCOMPLETE) — a no-op confirmation, not new debugging.
+1. ~~**Re-run `scripts/01-03`**~~ — **DONE 2026-08-20.** 62/62 `triplet-ok`, manifest
+   verified byte-identical via both the CLI and `notebooks/03_build_manifest.ipynb`.
 2. **Scaffold the repo**: `src/mm_escape/` package skeleton, `envs/env-qc.yml`,
    `envs/env-core.yml`, `envs/env-communication.yml`, `notebooks/`.
 3. **Build `env-qc`**, register its Jupyter kernel (`mm-qc`).

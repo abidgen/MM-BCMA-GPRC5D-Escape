@@ -112,11 +112,30 @@ resumability the same way in either stack).
 ## Stage 05 — Gene-space intersection, integration, clustering (`notebooks/05_integration_clustering.ipynb`; env: `mm-core`)
 
 Before any concatenation: intersect gene sets across all retained samples (the
-62 samples split across 33538- and 33694-gene Cell Ranger references, sharing
-22164 genes in common — see `CLAUDE.md`'s Data section for why this must be an
-intersection, never a union). Assert all required marker/antigen genes survive
-the intersection; hard-fail naming the specific missing gene(s) otherwise.
-`anndata.concat(..., join="inner")` performs the actual merge.
+62 samples split across 33538- and 33694-gene Cell Ranger references — see
+`CLAUDE.md`'s Data section for why this must be an intersection, never a union).
+Assert all required marker/antigen genes survive; hard-fail naming the specific
+missing gene(s) otherwise. `anndata.concat(..., join="inner")` performs the merge.
+
+**But intersect *canonicalized* symbols, not raw ones.** The two references were built
+against different HGNC symbol vintages, so some genes exist in **both** builds under
+different names and a naive set intersection throws them away. Found the hard way when
+stage 03's assertions failed on `NSD2` — which the older build calls `WHSC1`. The
+others are `TENT5C`/`FAM46C` (a recurrently-deleted myeloma tumour suppressor),
+`NSD3`/`WHSC1L1` (a genuinely different gene from NSD2 — don't conflate them), and
+`ATP5F1A`/`ATP5A1`.
+
+That `NSD2` case is the one that matters most: NSD2 is how t(4;14) is detected, and
+t(4;14) is the highest-risk myeloma translocation. Left unharmonized, Stage 10's
+molecular-subgroup call would quietly lose its highest-risk class — not error out, just
+never report it. Harmonizing first recovers all four genes (22,164 → 22,168).
+
+The wider lesson the assertions bought: **a required gene coming up missing means
+"check for a legacy symbol", not "biologically absent".** Worth noting too that the
+~11k symbols unique to each build are mostly annotation-version noise (`AC000032.1`
+versus `AC000032.2`) rather than real genes, so the 22,164 figure understates what is
+actually recoverable — tolerable for clone identifiers nothing downstream reads, not
+tolerable for a named gene the pipeline depends on.
 
 Normalize, select highly variable genes, PCA, then `harmonypy` integration keyed
 on `patient_id` (with `n_genes_ref` as an additional covariate) to correct for

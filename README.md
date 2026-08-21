@@ -123,6 +123,11 @@ bash scripts/02_check_files.sh          # confirm per-sample file structure
 python scripts/03_build_manifest.py raw/samples   # build sample -> file-path manifest
 ```
 
+`notebooks/03_build_manifest.ipynb` is an interactive companion to that last step — it
+imports the script's `build_manifest()` and writes the same manifest byte-for-byte,
+adding the Cell Ranger reference split, a symbol-harmonized intersection preview, and
+required-gene assertions. Either path works; the CLI remains the contract.
+
 | # | Notebook | Env | Output |
 |---|---|---|---|
 | 04 | `notebooks/04_qc.ipynb` | `mm-qc` | `results/04_qc/` |
@@ -156,6 +161,8 @@ behind each stage.
 ├── envs/                                  # three conda env specs, split by dependency risk
 ├── src/mm_escape/                         # all analysis logic — importable, Codex-reviewable
 ├── notebooks/                             # numbered 04-12, jupytext-paired with src/
+│                                          #   (+ 03_build_manifest, an interactive
+│                                          #    companion to scripts/03 — same output)
 ├── scripts/                               # 01-03, data acquisition (reused unchanged from the R build)
 ├── raw/                                   # data (gitignored — regenerate via scripts/01)
 └── results/                               # numbered 04-12, matching notebooks 1:1 (gitignored)
