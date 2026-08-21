@@ -7,9 +7,9 @@
 #       format_name: percent
 #       format_version: '1.3'
 #   kernelspec:
-#     display_name: mm-dual-antigen
+#     display_name: mm-qc
 #     language: python
-#     name: mm-dual-antigen
+#     name: mm-qc
 # ---
 
 # %% [markdown]

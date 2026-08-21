@@ -357,11 +357,18 @@ transcript, absent from 33694) — harmless, dropped by the intersection, and mu
 `gene_space.py` are still required as a regression guard, but are expected to pass.
 
 **Matched bulk RNA-seq (GSE223061) — already downloaded, previously unused.**
-`raw/unpacked_bulk/` holds **30 usable bulk samples**: 18 MMRF samples as
-`<GSM>_<sample>_tpm.tsv.gz` (gene × TPM tables) and 12 WashU samples as
-`<GSM>_<sample>.tar.gz`. Overlap with the scRNA cohort is ~28 samples — enough for
-a real orthogonal check on the antigen quantification (stage 09). Gotchas confirmed
-by direct inspection:
+`raw/unpacked_bulk/` holds **29 usable bulk samples** (inventory corrected
+2026-08-21 by direct count in `notebooks/01_download_data.py`, which now asserts
+these numbers): **18** MMRF samples as `<GSM>_<sample>_tpm.tsv.gz` (gene × TPM
+tables, GSM6939103-120) of which 2 are empty stubs, plus **13** WashU samples as
+`<GSM>_<sample>.tar.gz` (GSM6939090-102, all 4.5-5.4 MB). The earlier "18 + 12 = 30
+usable" was wrong twice over — the WashU count was 12 and the total did not subtract
+the stubs. Correct arithmetic: (18 - 2) + 13 = 29.
+Overlap with the scRNA cohort is ~28 samples — **this figure is inherited and not
+yet verified**; it depends on the three ID mismatches below and on the S1 patient
+mapping, so recompute it at stage 09 rather than quoting it. Still ample for a real
+orthogonal check on the antigen quantification. Gotchas confirmed by direct
+inspection:
 - **Two files are empty 114-byte gzip stubs and must be excluded**:
   `GSM6939104_MMRF_1505_tpm.tsv.gz`, `GSM6939120_MMRF_2259_tpm.tsv.gz`. Do not
   treat a 114-byte read as "zero expression" — it is a failed deposit.
@@ -786,11 +793,28 @@ break schema parity with the script.
 
 **01-03 — Data acquisition** (`notebooks/01_download_data.ipynb`,
 `02_check_files.ipynb`, `03_build_manifest.ipynb`; env: `mm-qc`). Notebooks wrapping the
-verified `scripts/01-03`, which remain as a CLI fallback. Status: **run and confirmed
-2026-08-20** — 62/62 `triplet-ok`, manifest byte-identical via both paths. Notebook 03
-additionally reports the Cell Ranger reference split and runs the required-gene
-assertions (which is how the `NSD2`/`WHSC1` symbol drift was found). Notebooks 01 and 02
-are not yet written.
+verified `scripts/01-03`, which remain as a CLI fallback. Status: **all three written,
+executed and passing (01/02 added 2026-08-21)** — 62/62 `triplet-ok`, manifest
+byte-identical via both paths, all assertions green.
+
+Scripts 01 and 02 are **bash**, so their notebooks `subprocess` out to them rather than
+importing a function as notebook 03 does — that is what "wrap, don't duplicate" means
+for a shell script. Notebook 02 parses the script's classification table into a
+DataFrame for assertions, but never re-derives the classification itself.
+
+Each adds what a notebook is for. **01**: a pre-flight stating whether the run will
+download or skip (so a 1 GB transfer is never started by accident), post-conditions on
+the 62 sample dirs and their `.extraction_complete` markers, and the bulk inventory
+assertion that caught the 12-vs-13 WashU error above. **02**: assertions on the
+`triplet-ok` classification, the reference split, a manifest-vs-disk cross-check, and
+the **checksum finding** — 62 `genes.tsv` files, only **3 distinct checksums**, which is
+the fact that makes the Ensembl-ID reconstruction in `gene_space.py` possible at all. It
+asserts exactly 3, so a new reference build fails loudly instead of being merged
+silently. **03** reports the reference split and runs the required-gene assertions
+(which is how the `NSD2`/`WHSC1` symbol drift was found).
+
+Note notebook 03's kernelspec said `mm-dual-antigen` (an R-build leftover) and was
+repointed to `mm-qc` on 2026-08-21, matching the env this stage actually declares.
 
 **04 — QC + doublets** (`notebooks/04_qc.ipynb`, `src/mm_escape/qc.py`; env:
 `mm-qc`). Custom loader (handles `counts.mtx`/`genes.tsv` naming). QC metrics via
