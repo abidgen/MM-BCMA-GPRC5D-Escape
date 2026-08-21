@@ -1,0 +1,40 @@
+# Stages 05-10 and 12 — integration, malignant calling, antigen scoring, escape
+# fraction, robustness, subclone/phenotype, decision packet. Everything except
+# stage 04's QC (R) and stage 11's LIANA+ (version-sensitive dependency tree).
+#
+# NOTE: infercnvpy is NOT packaged for conda on any channel (verified 2026-08-21),
+# so it is installed via pip. It is REQUIRED, not optional — stage 07's CNV
+# concordance check sets the denominator of the headline metric.
+#
+# scCODA is deliberately absent: it pulls TensorFlow, which is heavyweight and
+# version-brittle with no relationship to this stack. See env-composition.yml.
+name: mm-core
+channels: [conda-forge, bioconda]
+dependencies:
+  - python=3.12
+  - scanpy=1.11
+  - anndata
+  - harmonypy
+  - leidenalg
+  - python-igraph
+  - celltypist
+  - pydeseq2            # stage 10 pseudobulk DE (patient as unit of replication)
+  - pandas
+  - numpy
+  - scipy
+  - scikit-learn
+  - statsmodels         # stages 08/09 regression, bootstrap CIs, confounder models
+  - seaborn
+  - matplotlib
+  - jupyterlab
+  - ipykernel
+  - jupytext
+  - pip
+  - pip:
+      - infercnvpy      # not on conda-forge or bioconda
+      # bioconda's decoupler is stuck at 1.5.0 (2023) and pins numpy<2, which
+      # conflicts with pydeseq2/scipy/zarr in this env; 1.5.0 also fails to import
+      # under numba 0.67 (np.arange(dtype=nb.f4) in method_gsva). 2.x has no numpy
+      # pin. NOTE: decoupler 2.x is an API rewrite (dc.mt.* / dc.op.*) — do NOT
+      # follow 1.x tutorials when writing stage 10.
+      - decoupler==2.2.0

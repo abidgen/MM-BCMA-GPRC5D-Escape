@@ -1,0 +1,17 @@
+# Stage 06's compositional comparison ONLY, and only if it is actually run.
+#
+# NOT BUILT BY DEFAULT. scCODA pulls TensorFlow; the whole point of splitting these
+# environments by dependency-conflict risk is that mm-core must not be destabilized
+# to save an environment. Build this on demand:
+#     mamba env create -f envs/env-composition.yml
+#
+# Cell-type proportions are compositional data (they sum to 1, so one type rising
+# forces others down); naive per-type proportion tests on them are anticonservative,
+# which is why this exists at all rather than a t-test in mm-core.
+name: mm-composition
+channels: [conda-forge, bioconda]
+dependencies:
+  - python=3.12
+  - sccoda
+  - anndata
+  - ipykernel

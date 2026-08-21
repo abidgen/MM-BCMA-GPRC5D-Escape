@@ -1,0 +1,25 @@
+# Stage 06 only — the three-way annotation comparison (manual panel / CellTypist /
+# SingleR). Isolated for the same reason env-qc is: SingleR is R, and R stays
+# quarantined in the environments that actually need it rather than entering mm-core.
+#
+# NOTE: the conda package for celldex is `bioconductor-celldex`; a bare `celldex`
+# does not exist on any channel (verified 2026-08-21).
+name: mm-annotation
+channels: [conda-forge, bioconda]
+dependencies:
+  - python=3.12
+  - scanpy=1.11
+  - anndata
+  - celltypist
+  - r-base=4.3.3
+  - rpy2=3.5.11
+  - bioconductor-singler
+  - bioconductor-celldex
+  - anndata2ri
+  - scikit-learn        # concordance stats (ARI / per-class F1) for the comparison
+  - pandas
+  - seaborn
+  - matplotlib
+  - jupyterlab
+  - ipykernel
+  - jupytext

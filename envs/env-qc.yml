@@ -1,0 +1,27 @@
+# Stage 04 only — loading, QC metrics, MAD outlier filtering, doublet detection.
+#
+# Exists to QUARANTINE R: scDblFinder is the benchmarked-best doublet caller
+# (Xi & Li 2021), so it is used from Python over an rpy2 bridge rather than swapped
+# for a pure-Python alternative for language purity. Isolating it here means no other
+# environment carries an R dependency it does not need.
+#
+# Adapted from sc-best-practices.org's published environment for its QC chapter.
+name: mm-qc
+channels: [conda-forge, bioconda]
+dependencies:
+  - python=3.12
+  - scanpy=1.11
+  - anndata
+  - pandas
+  - numpy
+  - scipy
+  - seaborn
+  - matplotlib
+  - jupyterlab
+  - ipykernel
+  - jupytext            # notebooks are paired .py/.ipynb; see CLAUDE.md
+  - r-base=4.3.3
+  - rpy2=3.5.11
+  - bioconductor-scdblfinder=1.16.0
+  - bioconductor-singlecellexperiment
+  - anndata2ri
