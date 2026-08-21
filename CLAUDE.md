@@ -51,42 +51,14 @@ re-discover any of it; read this document first.
 
 ---
 
-## Repo cleanup (one-time, do this BEFORE writing any Python code)
+## Working tree
 
-The working directory still has the full R build in it. Clean it up first —
-don't build the Python version on top of a cluttered tree.
+The R build was removed from the working tree on 2026-08-20 and is preserved in git
+history under the **`r-build-snapshot`** tag (`git show r-build-snapshot` to inspect,
+`git checkout r-build-snapshot -- <path>` to recover a file). It is not being ported
+— only the dataset knowledge in this document carries forward.
 
-**1. Snapshot the R build in git before deleting anything**, so it's recoverable
-even though it's leaving the working tree:
-```bash
-cd /media/wrath/CART_mm_dual_antigen
-git init                      # if not already a repo
-git add -A
-git commit -m "Snapshot: R/Seurat build before Python rebuild (04a complete, 04b/04c not run)"
-git tag r-build-snapshot
-```
-
-**2. Delete R-specific code and stale generated results** — all regenerable, none
-of it is data:
-```bash
-rm -rf env_creation/
-rm -rf scripts/04a_load_qc.R scripts/04b_merge_normalize.R scripts/04c_integrate_cluster.R
-rm -rf scripts/lib/
-rm scripts/__01_download_data.sh scripts/__03_build_manifest.py   # old pre-fix backups, long safe to delete
-rm -rf results/    # entirely R-generated (RDS checkpoints, SMOKETEST artifacts, QC pngs) — nothing here is Python's
-```
-
-**3. Keep, unchanged:**
-```
-raw/                          # the actual downloaded/extracted data — do NOT redo this
-scripts/01_download_data.sh
-scripts/02_check_files.sh
-scripts/03_build_manifest.py
-CLAUDE.md, RESUME_HERE.md, README.md, mm_analysis_overview.md,
-mm_dual_antigen_escape_pipeline.md   # overwrite with the current versions, don't hand-merge old content in
-```
-
-**4. Confirm the result looks like this** before writing any `src/` code:
+Current tree; everything else in this document describes what gets added from here:
 ```
 .
 |-- CLAUDE.md
@@ -94,13 +66,16 @@ mm_dual_antigen_escape_pipeline.md   # overwrite with the current versions, don'
 |-- README.md
 |-- mm_analysis_overview.md
 |-- mm_dual_antigen_escape_pipeline.md
-|-- raw/                      # untouched
+|-- raw/                      # the downloaded/extracted data — do NOT redo this
 `-- scripts/
     |-- 01_download_data.sh
     |-- 02_check_files.sh
     `-- 03_build_manifest.py
 ```
-Everything else in this document describes what gets added from here.
+
+`raw/` is the one irreplaceable thing here (`GSE223060_RAW.tar` is ~970 MB and
+`GSE223061_RAW.tar` ~77 MB, both gitignored). Everything else in the tree is either
+source or regenerable.
 
 ---
 
@@ -720,18 +695,17 @@ The final stage; consumes the output of everything upstream. Assembles:
 
 ## Status / immediate next step
 
-**Nothing has been implemented in Python yet — this is a clean start.** See
-`RESUME_HERE.md` for exact session state as work proceeds.
+**No Python has been implemented yet.** The working tree is clean (R build removed,
+preserved under `r-build-snapshot`), `raw/` is intact at 62 samples, and
+`scripts/01-03` are in place. See `RESUME_HERE.md` for exact session state as work
+proceeds.
 
 First actions, in order:
-1. **Do the Repo cleanup steps at the top of this document** — snapshot-then-delete
-   the R build, confirm the tree matches the "keep" list. Not optional, not
-   deferrable — don't scaffold Python code into the cluttered R tree.
-2. Re-run `scripts/01-03` (unchanged) and confirm `raw/sample_manifest.csv` still
+1. Re-run `scripts/01-03` (unchanged) and confirm `raw/sample_manifest.csv` still
    comes out clean (62 samples, no INCOMPLETE entries) — should be a no-op
    confirmation, not new debugging.
-3. Scaffold `src/mm_escape/` and the three `envs/*.yml` files.
-4. Build `env-qc`, register its kernel, start `notebooks/04_qc.ipynb` against
+2. Scaffold `src/mm_escape/` and the three `envs/*.yml` files.
+3. Build `env-qc`, register its kernel, start `notebooks/04_qc.ipynb` against
    `src/mm_escape/io.py` + `qc.py` — validate the loader against 2-3 real sample
    directories before scaling to all 61.
 
@@ -769,7 +743,7 @@ scoring, the robustness suite, the subclone test — runs to completion without 
 Chosen so the project has several presentable stopping points rather than being
 all-or-nothing:
 
-1. Repo cleanup → re-confirm `scripts/01-03` → scaffold `src/mm_escape/` + envs.
+1. Re-confirm `scripts/01-03` → scaffold `src/mm_escape/` + envs.
 2. Stages 04-08 core path on the provisional mapping.
    **First presentable state: a working escape-fraction ranking.**
 3. Stage 08's defense layer (sensitivity band, dropout checks, CIs) + stage 09.

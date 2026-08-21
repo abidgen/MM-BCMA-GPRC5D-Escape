@@ -92,12 +92,7 @@ directly rather than leaving it as a caveat.
 
 ## Setup
 
-**First, one-time repo cleanup** (removing the prior R/Seurat build's code and
-generated results — see `CLAUDE.md`'s "Repo cleanup" section for exact commands;
-`raw/` and `scripts/01-03` are kept, everything else R-specific is snapshotted in
-git then removed from the working tree).
-
-Then, three conda/mamba environments, split by actual dependency-conflict risk
+Three conda/mamba environments, split by actual dependency-conflict risk
 (see `CLAUDE.md` for the full reasoning):
 
 ```bash
@@ -164,10 +159,13 @@ behind each stage.
 
 ## Status
 
-Prior R/Seurat build reached: data acquisition solved and verified (62/62 samples),
-QC/doublet-removal run on the full cohort, integration not yet run. **Now restarting
-in Python from scratch.** Repo cleanup (removing the R-specific code and generated
-results, keeping `raw/` and `scripts/01-03`) is the first action and has not been
-done yet. See `RESUME_HERE.md` for exact session state and `CLAUDE.md` for full
-technical context, all confirmed data-format gotchas, and the settled architecture
-decisions.
+A prior R/Seurat build reached: data acquisition solved and verified (62/62 samples),
+QC/doublet-removal run on the full cohort, integration not yet run. **Now being
+rebuilt in Python from scratch** — that R build is preserved in git history under the
+`r-build-snapshot` tag and is not being ported; the dataset knowledge it earned
+carries forward via `CLAUDE.md`.
+
+Current state: `raw/` intact (62 samples), `scripts/01-03` in place, no Python
+implemented yet. See `RESUME_HERE.md` for exact session state and `CLAUDE.md` for
+full technical context, all confirmed data-format gotchas, and the settled
+architecture decisions.

@@ -1,5 +1,0 @@
-"sample_id","patient_id","n_cells_raw","n_cells_loaded","n_cells_thresholded","n_doublets","n_cells_final","median_nFeature","median_percent_mt","status"
-"GSM6939028_MMRF_1695","MMRF_1695",1007,1007,935,29,906,2145,6.79793717768401,"kept"
-"GSM6939029_MMRF_1325","MMRF_1325",509,509,488,13,475,1684,7.40626920712969,"kept"
-"GSM6939030_MMRF_1413","MMRF_1413",2561,2561,2482,117,2365,1850,5.93277472792064,"kept"
-"GSM6939031_MMRF_1537","MMRF_1537",3643,3643,3446,209,3237,952,5.18234165067178,"kept"

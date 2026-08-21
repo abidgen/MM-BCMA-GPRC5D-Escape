@@ -1,11 +1,10 @@
 # RESUME HERE — MM Dual-Antigen pipeline (Python rebuild), session state
 
 **Last updated:** 2026-08-20
-**Branch:** `main` (R build still in the working tree — cleanup not yet done)
+**Branch:** `main` (working tree clean — R build removed, tagged `r-build-snapshot`)
 
-Read `CLAUDE.md` first — in particular the **"Repo cleanup"** section at the top,
-which is the literal first action before anything else. This file covers only
-*where execution stands* and *what to do next*.
+Read `CLAUDE.md` first for the settled decisions and data ground truth. This file
+covers only *where execution stands* and *what to do next*.
 
 ---
 
@@ -16,17 +15,17 @@ verified on all 62 samples, QC/doublet-removal run on the full 61-sample cohort,
 integration not yet run) before switching to Python. **None of the R code is being
 ported.** All dataset knowledge carries forward via `CLAUDE.md`.
 
-**Nothing has been run in Python yet. The repo cleanup has NOT been done yet either
-— that's the actual first step, before any Python code.**
+**Nothing has been run in Python yet.** The tree is ready for it: `raw/` intact at
+62 samples, `scripts/01-03` in place, nothing else in the way.
 
 ---
 
-## 2026-08-20 — scope expansion (docs only, no code)
+## 2026-08-20 — scope expansion + working-tree cleanup
 
-A design review of the analysis plan ran this session. **All proposed additions were
-adopted** and all five `.md` files were updated to match. No code was written; the
-repo cleanup is still the next action. Full reasoning lives in `CLAUDE.md` — the
-summary:
+Two things happened this session. A design review of the analysis plan ran and
+**all proposed additions were adopted**, with all five `.md` files updated to match.
+Then the R build was removed from the working tree. No Python was written. Full
+reasoning lives in `CLAUDE.md` — the summary:
 
 **The motivating problem.** `frac_double_negative` is a *fraction of zeros*, the
 noisiest quantity scRNA-seq produces, and the plan bounded only one of its two error
@@ -81,31 +80,33 @@ and this cohort's median cell has ~2,044 detected genes.
   timepoint indices — don't assume they are.
 - R-build QC numbers carried forward as cohort context: 61 samples, **181,336 post-QC
   cells**, median 2,555 cells/sample (min 480, max 7,937), median `nFeature` ≈ 2,044.
+  Source `results/qc_summary_per_sample.csv` now lives only in the snapshot —
+  `git show r-build-snapshot:results/qc_summary_per_sample.csv` to re-read it.
+
+**Working-tree cleanup (done this session).** `env_creation/`, `scripts/04{a,b,c}_*.R`,
+`scripts/lib/`, the two `scripts/__*` pre-fix backups and the entire `results/`
+directory were removed. Everything is recoverable from the **`r-build-snapshot`** tag
+(commit `8ee8624`), which captured all 642 MB including the 638 MB of per-sample QC
+`.rds` checkpoints. `raw/` was not touched.
 
 ---
 
 ## Immediate next actions, in order
 
-1. **Repo cleanup** (see `CLAUDE.md`'s "Repo cleanup" section for exact commands):
-   `git init` + commit + tag the current R-build tree as `r-build-snapshot`, then
-   delete `env_creation/`, `scripts/04{a,b,c}_*.R`, `scripts/lib/`,
-   `scripts/__01_download_data.sh`, `scripts/__03_build_manifest.py`, and the
-   entire `results/` directory (all R-generated, all regenerable). Keep `raw/`
-   and `scripts/01-03` untouched.
-2. **Re-run `scripts/01-03`** to confirm `raw/sample_manifest.csv` still comes out
+1. **Re-run `scripts/01-03`** to confirm `raw/sample_manifest.csv` still comes out
    clean (62 samples, no INCOMPLETE) — a no-op confirmation, not new debugging.
-3. **Scaffold the repo**: `src/mm_escape/` package skeleton, `envs/env-qc.yml`,
+2. **Scaffold the repo**: `src/mm_escape/` package skeleton, `envs/env-qc.yml`,
    `envs/env-core.yml`, `envs/env-communication.yml`, `notebooks/`.
-4. **Build `env-qc`**, register its Jupyter kernel (`mm-qc`).
-5. **Write `src/mm_escape/io.py`**: the loader replacing `scanpy.read_10x_mtx()`.
+3. **Build `env-qc`**, register its Jupyter kernel (`mm-qc`).
+4. **Write `src/mm_escape/io.py`**: the loader replacing `scanpy.read_10x_mtx()`.
    Handles `counts.mtx` (not `matrix.mtx`), single-column `genes.tsv`, the extra
    nesting level per sample. Validate against 2-3 real samples before scaling to
    all 61 — most likely place for a silent format-assumption bug to hide.
-6. **Write `src/mm_escape/qc.py`** and `notebooks/04_qc.ipynb` -> `results/04_qc/`:
+5. **Write `src/mm_escape/qc.py`** and `notebooks/04_qc.ipynb` -> `results/04_qc/`:
    QC metrics, MAD-based outlier calling (start from 5 MAD, document the actual
    resulting thresholds for this cohort), `scDblFinder` via `rpy2`. Exclude
    `56203_1`. Checkpoint per-sample.
-7. Continue through stages 05-12 per `CLAUDE.md`'s pipeline section — notebook
+6. Continue through stages 05-12 per `CLAUDE.md`'s pipeline section — notebook
    number N always writes to `results/N_*/`, nothing else. Run them in numeric
    order; number order is execution order.
 
@@ -167,7 +168,7 @@ natively reimplements CellChat's own algorithm).
 
 ## Status
 
-Cleanup not yet done, architecture decided, **scope expanded and all five `.md`
-files updated (2026-08-20)**, nothing executed. This file will keep growing the way
+Working tree clean, architecture decided, **scope expanded and all five `.md` files
+updated (2026-08-20)**, no Python executed yet. This file will keep growing the way
 the R build's did — exact numbers, bugs found and fixed, open decisions — as each
 stage actually runs.

@@ -21,9 +21,9 @@ does the pipeline do and why," not "what state is it in right now."
 project reached: data acquisition fully solved, QC/doublet-removal run on the full
 cohort, integration not yet run. No R code carries over; all data-format knowledge
 does — see `CLAUDE.md`'s Data section for the full detail (file-naming quirks,
-reference mismatch, patient-mapping gap). **Before any of the stages below,
-`CLAUDE.md`'s "Repo cleanup" section must be done first** — the old R build's
-scripts and results are removed, only `raw/` and `scripts/01-03` carry over.
+reference mismatch, patient-mapping gap). The R build has been removed from the
+working tree (preserved in git under the `r-build-snapshot` tag); only `raw/` and
+`scripts/01-03` carry over.
 
 **Numbering note:** stage numbers below match notebook filenames and their
 `results/NN_*/` output directory one-to-one (`notebooks/04_qc.ipynb` ->
