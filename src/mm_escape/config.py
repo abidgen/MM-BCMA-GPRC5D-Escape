@@ -35,15 +35,43 @@ RESULTS_DIR = Path(_env("RESULTS_DIR", str(REPO_ROOT / "results")))
 #: Committed Ensembl-ID reconstruction (see gene_space.py and CLAUDE.md).
 GENE_SPACE_DIR = Path(_env("GENE_SPACE_DIR", str(REPO_ROOT / "resources" / "gene_space")))
 
+#: Per-sample GEO metadata parsed from the *_family.soft.gz files (see io.py). Holds
+#: cohort / chemistry / diagnosis, none of which is derivable from filenames.
+SAMPLE_METADATA_DIR = Path(
+    _env("SAMPLE_METADATA_DIR", str(REPO_ROOT / "resources" / "sample_metadata"))
+)
+
 # --------------------------------------------------------------------------
 # Sample exclusions
 # --------------------------------------------------------------------------
 
-#: `56203_1` was processed against a 22184-gene reference that lacks TNFRSF17 (BCMA)
-#: and IGLC1/2/3 entirely — every cell would read BCMA-negative for a purely technical
-#: reason. Patient 56203 is fully covered by 56203_2 (33694-gene reference), so no
-#: patient coverage is lost. See CLAUDE.md; do not "recover" this by zero-filling.
-EXCLUDED_SAMPLES = frozenset({"56203_1"})
+#: No samples are excluded. `56203_1` was excluded until 2026-08-24 on the belief that
+#: it came from a 22184-gene reference lacking TNFRSF17; the GEO metadata and the files
+#: show that was a misdiagnosis — see TRUNCATED_GENE_FILES below. It is repaired and
+#: retained instead.
+EXCLUDED_SAMPLES: frozenset[str] = frozenset()
+
+# --------------------------------------------------------------------------
+# Damaged deposits
+# --------------------------------------------------------------------------
+
+#: `56203_1`'s `genes.tsv` write FAILED PART-WAY: the file holds 22185 rows and ends
+#: `KBTBD` with no trailing newline, where the 33694 reference has `KBTBD7` at that
+#: position. It is a strict prefix of the standard 33694 list, not a different
+#: reference — its `counts.mtx` header reads `33694 1837 2135520`, a normal
+#: 33694-build matrix. `TNFRSF17` (canonical row 25539) and `IGLC1/2/3` (rows
+#: 32548-32552) were not absent from a reference; they were past the cut.
+#:
+#: (The "22184 genes" in earlier versions of CLAUDE.md is a `wc -l` artifact — the
+#: file has no trailing newline, so `wc -l` undercounts by one. There are 22185 rows.)
+#:
+#: The repair is provable rather than a guess: substitute the canonical symbols for
+#: the declared build, which come from the committed, position-verified gene map, and
+#: assert the truncated file is a prefix of them. `io.read_sample` does this and
+#: hard-fails if the prefix check does not hold.
+TRUNCATED_GENE_FILES: dict[str, dict[str, int]] = {
+    "56203_1": {"build": 33694, "deposited_rows": 22185},
+}
 
 # --------------------------------------------------------------------------
 # Cell Ranger reference builds
@@ -70,9 +98,6 @@ BUILDS: dict[int, dict[str, str]] = {
         ),
     },
 }
-
-#: 22184-gene build, `56203_1` only. Not reconstructed — the sample is excluded.
-UNSUPPORTED_BUILDS = frozenset({22184})
 
 #: The biotype whitelist 10x's `cellranger mkgtf` applies when building the human
 #: reference. Reproducing this exactly is what yields 33538 / 33694 rows.

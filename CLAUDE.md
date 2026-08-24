@@ -212,16 +212,39 @@ NOT in the filenames** — pull it from the paper's Supplementary Table S1 befor
 building the analysis manifest.
 
 **CRITICAL — mixed Cell Ranger references across samples (confirmed):** The 62
-samples were processed against three different references, distinguishable by row
-count in `genes.tsv`:
+samples were processed against **two** references, distinguishable by row count in
+`genes.tsv`:
 - 33538 genes — 37 samples
-- 33694 genes — 24 samples
-- 22184 genes — 1 sample only: `56203_1`
+- 33694 genes — 25 samples (including `56203_1`, see below)
 
-`56203_1` is missing `TNFRSF17` (BCMA) entirely, plus `IGLC1`/`IGLC2`/`IGLC3`. If
-merged naively, every cell in that sample would read as BCMA-negative for a purely
-technical reason. **Decision: exclude `56203_1`.** Patient 56203 is still fully
-covered by `56203_2` (complete 33694-gene reference) — zero patient coverage lost.
+**`56203_1` is NOT a third reference — it is a truncated deposit, and it is repaired
+rather than excluded (corrected 2026-08-24).** The earlier reading (a "22184-gene
+build missing `TNFRSF17`") was a misdiagnosis, and the exclusion decision rested on
+it. What the files actually show:
+
+```
+counts.mtx header:      33694 1837 2135520      <- a normal 33694-build matrix
+genes.tsv:              22185 rows, ends 'KBTBD', NO trailing newline
+33694 reference row 22185:      'KBTBD7'
+rows 1..22184 vs the reference: identical, a strict prefix
+```
+
+The gene-file write failed part-way through. `TNFRSF17` (canonical row 25539) and
+`IGLC1/2/3` (rows 32548-32552) were never absent from a reference — they were past
+the cut. `GPRC5D` (row 20472), `SLAMF7`, `FCRL5`, `SDC1` and `CD38` were all present
+even in the truncated file.
+
+The "22184 genes" figure was itself a **`wc -l` artifact**: the file has no trailing
+newline, so `wc -l` undercounts by one. There are 22185 written rows.
+
+**Decision: repair and retain.** `io.read_sample` substitutes the canonical column for
+the declared build — taken from the committed, position-verified gene map, not from
+another sample's file — after asserting that every written row matches the reference
+and that the final partial row is a prefix of the symbol it was cut from. If either
+assertion fails the load raises rather than substituting, so this is a provable repair
+and not a guess. Recovers 1,837 cells and a second sample for patient 56203, which
+matters if the `_N` suffixes are serial timepoints (see below). `config.EXCLUDED_SAMPLES`
+is now empty; the mechanism lives in `config.TRUNCATED_GENE_FILES`.
 
 **CRITICAL — the two references also use different HGNC symbol vintages, so a naive
 symbol intersection silently drops genes present in BOTH builds.** Confirmed
@@ -366,6 +389,63 @@ transcript, absent from 33694) — harmless, dropped by the intersection, and mu
 **not** be substituted for `GPRC5D` anywhere. The hard assertions in
 `gene_space.py` are still required as a regression guard, but are expected to pass.
 
+### GEO series metadata — added and parsed 2026-08-24
+
+`raw/GSE22306{0,1}_family.soft.gz` (~8 KB each) carry per-sample facts that are **not
+derivable from filenames** and were absent from this document until 2026-08-24. Parsed
+into committed tables at `resources/sample_metadata/` (`raw/` is gitignored, same
+pattern as `resources/gene_space/`); regenerate with
+`io.rebuild_sample_metadata_from_soft`, which asserts sample counts and cohort
+resolution so a revised deposit fails loudly.
+
+**Cohort and prep, from `!Sample_extract_protocol_ch1`:**
+
+| cohort | n | chemistry | dead-cell removal | reference build |
+|---|---|---|---|---|
+| WashU 1 | 23 | 10x 3′ **v2** | **no** | 20× 33694, 2× 33538, 1 truncated |
+| WashU 2 | 13 | 10x 3′ v3.2 | yes | 13× 33538 |
+| MMRF | 18 | 10x 3′ v3.3 | yes | 18× 33538 |
+| Donors | 8 | 10x 3′ v3.2 | yes | 4× 33694 (`ND_*`), 4× 33538 (`BM*`) |
+
+**This is a confounder for the headline metric, and it is measured rather than
+assumed.** Sample-level medians of genes detected per pre-QC cell:
+
+    MMRF   v3.3   1916 genes/cell
+    WU2    v3.2   1210
+    Donor  v3.2   1103
+    WU1    v2     1023
+
+    v2 vs all-v3: 1023 vs 1408 = 1.38x, Mann-Whitney p = 6.5e-05,
+    but the sample distributions OVERLAP (v2 max 1602 > v3 min 793).
+
+**Do not quote a "2-3x v2-vs-v3 chemistry effect" — this cohort does not show one.**
+The axis that separates is **cohort** (MMRF ≈ 1.9× the others), of which chemistry
+version is one component alongside site and protocol. It still must be modelled:
+`frac_double_negative` is a fraction of zeros on a low-abundance transcript, so a 1.9×
+depth spread that tracks cohort will move it and read as biology. Carry `cohort` and
+`chemistry` as covariates in stage 08's depth regression and stage 10's null.
+
+**`n_genes_ref` is NOT a proxy for this** — the build split cuts across cohorts (two
+WU1 samples on 33538, the four `ND_*` donors on 33694). Stage 05's Harmony covariate
+needs `cohort`/`chemistry` in addition to, not instead of, `n_genes_ref`.
+
+**A free control:** the 8 donors span both references and are normal marrow, so
+stage 07's negative control doubles as a build/chemistry control in a population with
+no clone to confound it.
+
+**Raw data exists, under controlled access — "no raw data" was too strong.** The
+series design says raw data goes to dbGaP for patient privacy, with `ND_*` already
+available at **`phs000159`** and MMRF bulk at **`phs000748`** (BioProjects
+`PRJNA924769` / `PRJNA924778`). The practical conclusion is unchanged — no unfiltered
+matrices without a DAC application, so SoupX/DecontX remains unavailable — but
+"doesn't exist" and "exists behind a data-access committee" are different claims.
+
+**The deposit's own processing metadata is unreliable.** `!Sample_data_processing`
+claims Cell Ranger **v3.0.0 for all 62 samples**, which the files contradict for 24 of
+them (Ensembl 84 / CR 1.2.0). The files win — that reconstruction is checksum- and
+position-verified. Treat the rest of the SOFT text as evidence to check, not fact;
+every claim taken from it above was verified against the data.
+
 **Matched bulk RNA-seq (GSE223061) — already downloaded, previously unused.**
 `raw/unpacked_bulk/` holds **29 usable bulk samples** (inventory corrected
 2026-08-21 by direct count in `notebooks/01_download_data.py`, which now asserts
@@ -374,19 +454,33 @@ tables, GSM6939103-120) of which 2 are empty stubs, plus **13** WashU samples as
 `<GSM>_<sample>.tar.gz` (GSM6939090-102, all 4.5-5.4 MB). The earlier "18 + 12 = 30
 usable" was wrong twice over — the WashU count was 12 and the total did not subtract
 the stubs. Correct arithmetic: (18 - 2) + 13 = 29.
-Overlap with the scRNA cohort is ~28 samples — **this figure is inherited and not
-yet verified**; it depends on the three ID mismatches below and on the S1 patient
-mapping, so recompute it at stage 09 rather than quoting it. Still ample for a real
-orthogonal check on the antigen quantification. Gotchas confirmed by direct
-inspection:
+**Overlap COMPUTED 2026-08-24 from the GEO titles, no longer inherited or
+S1-gated: 26 bulk samples have an exact scRNA match** (not "~28"). 31 bulk GSMs, minus
+2 empty stubs, minus 3 with no scRNA counterpart.
+
+**The two bulk cohorts are not the same assay, and stage 09 must not pool them:**
+
+| bulk cohort | n | prep | matching pseudobulk |
+|---|---|---|---|
+| MMRF | 18 (16 usable) | **CD138+ sorted** | malignant-cell pseudobulk |
+| WashU 1 | 13 | **unsorted BMMC** | **whole-sample** pseudobulk |
+
+Correlating malignant-PC pseudobulk against *unsorted* bulk measures tumour burden,
+not antigen abundance — the dilution by non-plasma cells is proportional to burden,
+which varies per patient and is itself correlated with the metric. That would have
+silently corrupted 10 of the 26 matched comparisons. Split by cohort and use the
+matching comparator.
+
+Other gotchas, confirmed by direct inspection:
 - **Two files are empty 114-byte gzip stubs and must be excluded**:
-  `GSM6939104_MMRF_1505_tpm.tsv.gz`, `GSM6939120_MMRF_2259_tpm.tsv.gz`. Do not
-  treat a 114-byte read as "zero expression" — it is a failed deposit.
-- **Three bulk/sc sample-ID mismatches to reconcile against Supplementary Table
-  S1**, alongside the patient-mapping fix below — do not guess these pairings:
-  bulk `47499` vs. sc `47491_1`/`47491_2`; bulk `98433` vs. sc `MMY98423`; bulk
-  `59114_2` vs. sc `59114_1`/`59114_4` (the suffix numbering does not align across
-  assays, which is itself evidence the suffixes are not simple timepoint indices).
+  `GSM6939104_MMRF_1505_tpm.tsv.gz`, `GSM6939120_MMRF_2259_tpm.tsv.gz`. Both are real
+  GEO sample entries — a 114-byte read is a failed deposit, not "zero expression".
+- **The three bulk/sc ID mismatches, partly resolved.** `59114` was overstated: bulk
+  carries `59114_1` *and* `59114_2`, and `59114_1` matches scRNA exactly — only `_2`
+  is orphaned. `47499` and `98433` have no scRNA counterpart; note both are WashU
+  **cohort 1** bulk while `MMY98423` is cohort **2**, so the assumed
+  `98433` ↔ `MMY98423` pairing is doubtful rather than a simple typo. Do not guess
+  these; they are 3 of 29 and stage 09 works without them.
 
 **Patient mapping is a known unresolved gap, not yet fixed in the R build either.**
 A naive rule (strip a trailing `_<digits>` only when the stem is purely numeric,
@@ -396,30 +490,24 @@ are being missed (`83942`/`MMY83942` is a likely pair). **This must be resolved
 against Supplementary Table S1 before any per-patient aggregation step** — not
 optional, and not yet done in either language's build.
 
-**The 47/57 above counts the four `ND_*` samples as disease, and most of the gap
-disappears if they are not (found 2026-08-24 while building `io.py`).** This document
-already treats `ND_*` as normal-BM controls in two places — the sample-naming note
-above ("`ND_######`, and `BM#` (likely normal bone marrow controls)") and stage 07's
-negative control, which runs the malignant caller on "`BM2`, `BM4`, `BM5`, `BM6` and
-the `ND_*` samples". Counting them consistently as controls:
+**The 47/57 above is simply wrong: it counts the four `ND_*` samples as disease.
+SETTLED 2026-08-24 against the GEO metadata**, which is now in the repo (see "GEO
+series metadata" below). `!Sample_source_name_ch1` reads **`Donor BMMC, aspirate,
+scRNAseq`** for all four `ND_*` and all four `BM*`, and those eight are exactly the
+samples carrying no `diagnosis` characteristic; the other **54 read
+`diagnosis: Multiple myeloma (MM)`**. `ND` = normal donor, and the suffixes are
+collection dates.
 
 | | samples | naive patients |
 |---|---|---|
-| `ND_*` counted as disease (the inherited figure) | 57 | 47 |
-| **`ND_*` counted as controls** (+ `56203_1` excluded) | **53** | **43** |
+| `ND_*` counted as disease (the old figure) | 57 | 47 |
+| **`ND_*` as donors, `56203_1` repaired and retained** | **54** | **43** |
 
-53 is the paper's disease-sample count **exactly**, and 43 is two collapses from its
-41 rather than six — with `83942`/`MMY83942` the one obvious remaining pair. The four
-names are `ND_083017`, `ND_090617`, `ND_170531`, `ND_170607`: the suffixes are
-collection **dates** (MMDDYY / YYMMDD), not patient identifiers, which is how donor
-samples are usually labelled and is weak independent support.
-
-**This is a hypothesis, not a resolution — `ND` could also read "newly diagnosed",
-and the deposit does not say.** S1 settles it. `io.py` therefore classifies `ND_*` as
-`sample_type == "normal_bm"` with `sample_type_certain == False`, so the uncertainty
-is carried in the data rather than in a comment. Note the 53 also depends on dropping
-`56203_1`, which the paper had no reason to exclude for *our* BCMA-reference reason —
-so the exact sample-count match is suggestive, not proof.
+The series summary states "53 bone marrow (BM) aspirates from 41 MM patients"
+verbatim, matching the paper. So 54 deposited MM samples vs. 53 analysed, and 43 naive
+patients vs. 41 — **two name collapses still missing, not six**, with
+`83942`/`MMY83942` the obvious candidate. S1 is still required to close it, but the
+denominator uncertainty is now two samples rather than six.
 
 **Ambient RNA correction (SoupX/DecontX) is not possible for this dataset.** Both
 require the *unfiltered* Cell Ranger matrix (including empty droplets) to estimate
@@ -855,7 +943,10 @@ repointed to `mm-qc` on 2026-08-21, matching the env this stage actually declare
 `mm-qc`). Custom loader (handles `counts.mtx`/`genes.tsv` naming). QC metrics via
 `scanpy.pp.calculate_qc_metrics` including `pct_counts_in_top_20_genes`. MAD-based
 outlier filtering, re-derived per this cohort. `scDblFinder` via the `rpy2`
-bridge. `56203_1` excluded here. Checkpoint each sample's post-QC AnnData
+bridge. **MAD thresholds are derived per cohort, not pooled** — MMRF cells carry ~1.9x
+the genes/cell of WU1's, so a pooled MAD would flag much of WashU cohort 1 as
+low-quality for a batch reason (see the GEO metadata section). `56203_1` is loaded with
+its repaired gene column, not excluded. Checkpoint each sample's post-QC AnnData
 individually (mirrors the R build's resumable-per-sample design).
 
 **05 — Gene-space intersection, integration, clustering**
@@ -866,7 +957,9 @@ survive). The harmonization step is not optional — see the Data section's symb
 table; without it `NSD2` is dropped and stage 10 loses t(4;14) entirely. Report how many
 genes the harmonization recovers, so a regression here is visible rather than silent.
 `anndata.concat(join="inner")`. Normalize, HVG, PCA, `harmonypy` keyed on
-`patient_id` **with `n_genes_ref` as an additional covariate**, Leiden clustering,
+`patient_id` **with `n_genes_ref` AND `cohort` as additional covariates** — the build
+and the cohort are different axes and neither substitutes for the other (two WU1
+samples sit on the 33538 build, the four `ND_*` donors on 33694), Leiden clustering,
 UMAP. Diagnostic UMAP colored by reference version (`n_genes_ref`) to confirm the
 intersection actually neutralized processing batch.
 
@@ -1277,7 +1370,11 @@ detection-curve approach models the uncertainty instead of filling it in.
 `src/mm_escape/bulk.py` + `robustness.py`; env: `mm-core`). New stage. Everything
 here exists to answer "how do you know your escape fractions are real?"
 - **Matched bulk RNA-seq — orthogonal validation of antigen *abundance*, not of the
-  DN fraction (scope corrected 2026-08-21).** For the ~28 samples with matched bulk,
+  DN fraction (scope corrected 2026-08-21).** For the **26** samples with matched bulk
+  (computed 2026-08-24, not the inherited "~28"), **split by cohort**: MMRF bulk is
+  CD138+ sorted and pairs with malignant-cell pseudobulk, WashU 1 bulk is unsorted
+  BMMC and pairs with **whole-sample** pseudobulk. Pooling them would make 10 of the 26
+  comparisons measure tumour burden instead of antigen abundance. Then
   correlate malignant-cell pseudobulk `TNFRSF17`/`GPRC5D` against bulk TPM (Spearman,
   concordance, residuals, and the named discordant cases). The load-bearing question
   is whether scRNA zero-rates run systematically high where bulk says the transcript
@@ -1519,16 +1616,20 @@ is intact at 62 samples, `scripts/01-03` are confirmed (62/62 `triplet-ok`), not
 registered, and `src/mm_escape/` holds `config.py`, `gene_space.py` and `io.py`. See
 `RESUME_HERE.md` for exact session state as work proceeds.
 
-**`io.py` is written and validated against the real files (2026-08-24).** All 61
-retained samples load in ~4 s; the three-sample failure-mode set (`MMRF_1695` = 33538
-build, `27522_1` = 33694 build, `BM4` = normal-BM control) round-trips through
-`gene_space.py` to 32,991 genes with all 65 required genes present. Verified: the
-genes x cells -> cells x genes transpose (against random raw `.mtx` triplets plus exact
-total-count and nnz equality), deposited gene order preserved untouched for
-`attach_ensembl_ids`'s positional join, `<sample_name>_<barcode>` obs_names unique
-across the concat, and five failure paths raising. Cohort **pre-QC** totals: 202,203
-cells over 61 samples (154,053 disease / 48,150 normal-BM), 509 / 2,767 / 9,328
-min/median/max cells per sample (18.3x spread).
+**`io.py` is written and validated against the real files (2026-08-24).** All **62**
+samples load in ~2 s; the four-sample failure-mode set (`MMRF_1695` = 33538 build,
+`27522_1` = 33694 build, `BM4` = donor control, `56203_1` = truncated deposit)
+round-trips through `gene_space.py` to 32,991 genes with all 65 required genes present.
+Verified: the genes x cells -> cells x genes transpose (against random raw `.mtx`
+triplets plus exact total-count and nnz equality), deposited gene order preserved
+untouched for `attach_ensembl_ids`'s positional join, `<sample_name>_<barcode>`
+obs_names unique across the concat, the `56203_1` prefix repair plus its two failure
+modes, and the GEO metadata join. Cohort **pre-QC** totals: **204,040 cells over 62
+samples** (155,890 myeloma / 48,150 donor).
+
+`load_manifest()` emits `cohort`, `chemistry`, `dead_cell_removal` and `diagnosis`
+from `resources/sample_metadata/`, and every cell carries them — stage 04 needs
+`cohort` before it can derive thresholds.
 
 First actions, in order:
 1. Write `src/mm_escape/qc.py` (MAD outlier calling + the `scDblFinder` rpy2 bridge)
@@ -1558,12 +1659,30 @@ scoring, the robustness suite, the subclone test — runs to completion without 
 ### S1-gated additions (flagged provisional until S1 lands)
 
 - **Within-patient longitudinal escape trajectory.** `27522_1` through `27522_6` is
-  six samples from one patient, plus `47491_1/2`, `58408_1/2`, `59114_1/4`,
-  `60359_1/2`, `81012_1/2`. If those suffixes are timepoints, this is a longitudinal
-  arm at zero extra data cost — does escape fraction rise over time within a patient?
-  **Do not assume the suffixes are timepoints**: they may be fractions, sorts, or
-  replicates, and the bulk/sc suffix misalignment noted in the Data section is
-  evidence against a naive timepoint reading. S1 settles it.
+  six samples from one patient, plus `47491_1/2`, `56203_1/2`, `58408_1/2`,
+  `59114_1/4`, `60359_1/2`, `81012_1/2`. If those suffixes are timepoints, this is a
+  longitudinal arm at zero extra data cost — does escape fraction rise over time
+  within a patient?
+
+  **The evidence now points TOWARD a serial per-patient index, reversing what this
+  document previously said (2026-08-24).** The old claim — that bulk/sc suffix
+  misalignment argues against a timepoint reading — rested on `59114` alone. Against
+  the full bulk list, every patient present in both assays has bulk suffixes as a
+  subset or overlap of the scRNA ones, never a disjoint or differently-based scheme:
+
+      27522   sc [1,2,3,4,5,6]   bulk [1,2,4]     bulk subset of sc
+      60359   sc [1,2]           bulk [1,2]       bulk subset of sc
+      56203   sc [1,2]           bulk [2]         bulk subset of sc
+      59114   sc [1,4]           bulk [1,2]       overlap at 1, union {1,2,4}
+
+  Stronger still: `37692_2` and `57075_3` are **lone** samples with non-`_1`
+  suffixes. A fraction, sort or replicate label starts at 1 for a single sample; a
+  serial event index does not — it means events 1 (and 2) exist and were not
+  deposited. That reading explains all four patterns at once, and explains the
+  bulk/sc "misalignment" as incomplete assay coverage of a shared index.
+
+  **Still not proof of *timepoint* specifically, and S1 still settles it** — but the
+  arm is now worth planning for rather than discounting.
 - **Escape fraction vs. clinical/genomic covariates.** NDMM vs. RRMM, ISS stage,
   1q21 gain, t(4;14). Even descriptive at n ≈ 41, "is baseline escape risk higher in
   relapsed/refractory disease?" is a real, testable hypothesis on this cohort as-is.
@@ -1593,8 +1712,15 @@ all-or-nothing:
 - **No SINCLAIR.** Was for raw FASTQ processing; moot, no raw reads exist.
 - **Custom `read_mtx`-based loader, not `scanpy.read_10x_mtx()`.** The latter
   hardcodes filenames this archive doesn't use.
-- **`56203_1` excluded, gene sets intersected (not unioned).** Full reasoning in
-  Data section — don't revisit by trying to "recover" it via zero-filling.
+- **`56203_1` is REPAIRED and retained, not excluded (reversed 2026-08-24).** It is a
+  33694-build sample whose `genes.tsv` write failed at row 22185, not a 22184-gene
+  reference — its matrix declares the full 33694 rows and the written rows are a strict
+  prefix of the standard list. The canonical column is substituted from the committed
+  gene map behind a prefix assertion that raises rather than guessing. The old
+  exclusion was reasoned from a misdiagnosis. Zero-filling remains wrong and is not
+  what this does.
+- **Gene sets are intersected across samples, never unioned.** Full reasoning in the
+  Data section.
 - **Ambient RNA (SoupX/DecontX) is not attemptable** — no unfiltered matrices
   exist for this dataset. Mitigated via an empirical antigen-positivity noise
   floor instead, not left uncorrected silently.

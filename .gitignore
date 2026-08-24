@@ -19,6 +19,14 @@ raw/samples/
 # Keep the small manifest — it documents what was actually downloaded/found
 !raw/sample_manifest.csv
 
+# The GEO SOFT files are ~8 KB each and are the input to
+# io.rebuild_sample_metadata_from_soft, so they are committed as provenance for
+# resources/sample_metadata/. The XML and series-matrix encodings carry the same
+# content in a bulkier form and are not.
+!raw/*_family.soft.gz
+raw/*_family.xml.tgz
+raw/*_series_matrix.txt.gz
+
 # --- Large binary pipeline outputs, at any depth ------------------------------
 # AnnData / HDF5 checkpoints, the bulk of what stages 04-12 produce
 *.h5ad

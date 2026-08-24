@@ -8,7 +8,8 @@ distinguishable by row count in `genes.tsv`:
 
     33538 genes -> 37 samples   refdata-cellranger-GRCh38-3.0.0 (Ensembl 93)
     33694 genes -> 24 samples   refdata-cellranger-GRCh38-1.2.0 (Ensembl 84)
-    22184 genes ->  1 sample    56203_1 only — EXCLUDED (missing TNFRSF17)
+    22185 rows   ->  1 sample    56203_1 only — a TRUNCATED 33694 file, repaired
+                                on read by io.read_sample (see config.TRUNCATED_GENE_FILES)
 
 The two retained references use different HGNC symbol vintages, so intersecting on
 gene symbols silently drops genes present in BOTH builds — including NSD2 (WHSC1),
@@ -156,11 +157,6 @@ def load_gene_map(build: int, gene_space_dir: Path | None = None) -> pd.DataFram
     41-44 MB GTFs never need re-downloading. Regenerate only via
     `rebuild_gene_map_from_gtf`, which re-verifies against the real files.
     """
-    if build in config.UNSUPPORTED_BUILDS:
-        raise GeneSpaceError(
-            f"Build {build} has no reconstruction (sample 56203_1 only, and it is "
-            f"excluded — it lacks TNFRSF17 entirely). See config.EXCLUDED_SAMPLES."
-        )
     if build not in config.BUILDS:
         raise GeneSpaceError(
             f"Unknown reference build with {build} genes. Known: "
@@ -192,12 +188,16 @@ def detect_build(var_names: Sequence[str] | pd.Index) -> int:
     three distinct gene files in the cohort and they differ in length.
     """
     n = len(var_names)
-    if n in config.BUILDS or n in config.UNSUPPORTED_BUILDS:
+    if n in config.BUILDS:
         return n
+    truncated = {v["deposited_rows"] for v in config.TRUNCATED_GENE_FILES.values()}
+    hint = (
+        " That is the row count of a known TRUNCATED deposit, which io.read_sample "
+        "repairs on read — load the sample through it rather than by hand."
+        if n in truncated else " Was this object already subset or intersected?"
+    )
     raise GeneSpaceError(
-        f"{n} genes matches no known reference build "
-        f"({sorted(config.BUILDS) + sorted(config.UNSUPPORTED_BUILDS)}). "
-        f"Was this object already subset or intersected?"
+        f"{n} genes matches no known reference build ({sorted(config.BUILDS)})." + hint
     )
 
 

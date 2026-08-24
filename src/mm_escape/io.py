@@ -41,6 +41,7 @@ is a one-line change with a visible marker. See the S1 policy in CLAUDE.md.
 
 from __future__ import annotations
 
+import gzip
 import re
 from pathlib import Path
 from typing import Iterable, Iterator
@@ -55,6 +56,8 @@ from . import config
 
 __all__ = [
     "load_manifest",
+    "load_sample_metadata",
+    "rebuild_sample_metadata_from_soft",
     "parse_sample_name",
     "naive_patient_id",
     "classify_sample",
@@ -79,13 +82,14 @@ _GSM_PREFIX_RE = re.compile(r"^(GSM\d+)_(.+)$")
 #: malignant-caller negative control (polyclonal marrow must yield no clone).
 _NORMAL_BM_RE = re.compile(r"^BM\d+$")
 
-#: `ND_083017`, `ND_090617`, `ND_170531`, `ND_170607`. The suffixes are collection
-#: DATES, not patient identifiers, which is how donor samples are usually labelled —
-#: and CLAUDE.md's stage 07 explicitly lists `ND_*` alongside `BM*` as the normal-BM
-#: controls. Treated as controls here, but flagged `sample_type_certain == False`:
-#: `ND` could also read as "newly diagnosed", and the deposit does not say. S1 settles
-#: it. This choice moves the naive disease-sample count 57 -> 53 and the provisional
-#: patient count 47 -> 43; see `load_manifest`'s docstring.
+#: `ND_083017`, `ND_090617`, `ND_170531`, `ND_170607` — normal donors. CONFIRMED
+#: 2026-08-24 against the GEO SOFT file, which gives them `source_name` = "Donor BMMC,
+#: aspirate, scRNAseq" and no `diagnosis` characteristic at all, while the other 54
+#: samples read "Multiple myeloma (MM)". The suffixes are collection dates.
+#:
+#: This regex is now only a FALLBACK for when the committed metadata table is absent;
+#: `load_manifest` prefers the GEO table, which is authoritative. It is kept because
+#: the filename convention is the one thing that cannot go missing.
 _NORMAL_DONOR_RE = re.compile(r"^ND_\d+$")
 
 #: The naive patient rule. Strips a trailing `_<digits>` ONLY when the stem is purely
@@ -135,15 +139,175 @@ def naive_patient_id(sample_name: str) -> str:
 def classify_sample(sample_name: str) -> tuple[str, bool]:
     """Return (sample_type, certain) for a sample name.
 
-    `sample_type` is `"normal_bm"` or `"myeloma"`. `certain` is False for `ND_*`,
-    whose classification is a reading of the naming convention rather than a
-    documented fact — see `_NORMAL_DONOR_RE`.
+    Filename-only fallback, used when the committed GEO metadata table is missing.
+    `load_manifest` overrides it from `resources/sample_metadata/`, which is
+    authoritative and where `sample_type_certain` becomes True for every sample.
     """
-    if _NORMAL_BM_RE.match(sample_name):
+    if _NORMAL_BM_RE.match(sample_name) or _NORMAL_DONOR_RE.match(sample_name):
         return "normal_bm", True
-    if _NORMAL_DONOR_RE.match(sample_name):
-        return "normal_bm", False
     return "myeloma", True
+
+
+# ---------------------------------------------------------------------------
+# GEO series metadata
+# ---------------------------------------------------------------------------
+#
+# The SOFT files (raw/GSE22306{0,1}_family.soft.gz, ~8 KB each) carry per-sample
+# facts that are NOT derivable from filenames and were not in the project's ground
+# truth until 2026-08-24. Two of them are load-bearing:
+#
+#   cohort      MMRF / WU1 / WU2 / Donor
+#   chemistry   10x 3' v2 (WashU cohort 1) vs v3.2 / v3.3 (everything else)
+#
+# Chemistry is confounded with cohort, and the resulting sensitivity difference is
+# real but SMALLER THAN THE v2-vs-v3 FOLKLORE. Measured on this cohort's pre-QC cells
+# (sample-level medians of genes detected per cell, 2026-08-24):
+#
+#     MMRF   v3.3   18 samples   1916 genes/cell
+#     WU2    v3.2   13 samples   1210
+#     Donor  v3.2    8 samples   1103
+#     WU1    v2     23 samples   1023
+#
+#     v2 vs all-v3: 1023 vs 1408, a 1.38x ratio, Mann-Whitney p = 6.5e-05,
+#     but the sample distributions OVERLAP (v2 max 1602 > v3 min 793).
+#
+# So the axis that actually separates is COHORT, not chemistry version per se — MMRF
+# is ~1.9x the others and WU2/Donor sit close to WU1 despite being v3. Chemistry is
+# one component of a cohort/site/protocol difference, not the whole of it.
+#
+# It still has to be modelled: the headline metric is a FRACTION OF ZEROS on a
+# low-abundance transcript, so a 1.9x depth difference that tracks cohort will move
+# frac_double_negative and read as biology. Carry `cohort` (and `chemistry`) as
+# covariates in stage 08's depth regression and stage 10's null. Do NOT quote a
+# "2-3x chemistry effect" — this cohort does not show one.
+#
+# `n_genes_ref` is NOT a usable proxy for it: the reference build cuts across cohorts
+# (two WU1 samples on 33538, the four ND_* donors on 33694).
+#
+# raw/ is gitignored, so the parsed tables are committed under resources/ the way the
+# gene-space map is, and `rebuild_sample_metadata_from_soft` regenerates them.
+
+#: Prep protocol per cohort, read from !Sample_extract_protocol_ch1. WashU cohort 1
+#: was loaded straight after thaw; every other cohort went through Miltenyi dead-cell
+#: removal first, which is a second, smaller batch axis on top of chemistry.
+COHORT_PROTOCOL: dict[str, dict[str, str]] = {
+    "MMRF":  {"chemistry": "10x 3' v3.3", "dead_cell_removal": "yes"},
+    "WU1":   {"chemistry": "10x 3' v2",   "dead_cell_removal": "no"},
+    "WU2":   {"chemistry": "10x 3' v3.2", "dead_cell_removal": "yes"},
+    "Donor": {"chemistry": "10x 3' v3.2", "dead_cell_removal": "yes"},
+}
+
+_SOURCE_COHORT = (
+    ("MMRF cohort", "MMRF"),
+    ("WU cohort 1", "WU1"),
+    ("WU cohort 2", "WU2"),
+    ("Donor", "Donor"),
+)
+
+
+def _soft_records(soft_path: Path) -> list[dict[str, str]]:
+    """Parse a GEO `*_family.soft.gz` into one flat dict per ^SAMPLE block."""
+    records: list[dict[str, str]] = []
+    current: dict[str, str] | None = None
+    opener = gzip.open if str(soft_path).endswith(".gz") else open
+    with opener(soft_path, "rt", errors="replace") as handle:
+        for line in handle:
+            line = line.rstrip("\n")
+            if line.startswith("^SAMPLE = "):
+                current = {"gsm_id": line.split(" = ", 1)[1].strip()}
+                records.append(current)
+            elif current is None or not line.startswith("!Sample_"):
+                continue
+            elif " = " in line:
+                key, value = line[len("!Sample_"):].split(" = ", 1)
+                if key == "characteristics_ch1" and ": " in value:
+                    sub, value = value.split(": ", 1)
+                    key = f"char_{sub.strip().replace(' ', '_')}"
+                # Repeated keys (data_processing, description) are joined, not lost.
+                current[key] = f"{current[key]} || {value}" if key in current else value
+    return records
+
+
+def rebuild_sample_metadata_from_soft(
+    soft_path: Path,
+    assay: str,
+    out_path: Path | None = None,
+) -> pd.DataFrame:
+    """Parse a GEO SOFT file into the committed per-sample metadata table.
+
+    `assay` is `"scrna"` (GSE223060) or `"bulk"` (GSE223061). Emits `gsm_id`,
+    `sample_name`, `cohort`, `diagnosis`, `sample_type`, `source_name`, plus
+    `chemistry`/`dead_cell_removal` for scRNA and `prep` for bulk.
+
+    The committed tables live at `resources/sample_metadata/`; this only needs
+    re-running if GEO revises the deposit. Like the gene-space reconstruction, it
+    asserts its own expectations (sample count, that every sample resolves to a
+    known cohort) so a changed deposit fails loudly rather than merging silently.
+    """
+    records = _soft_records(soft_path)
+    expected = {"scrna": 62, "bulk": 31}[assay]
+    if len(records) != expected:
+        raise SampleLoadError(
+            f"{soft_path} holds {len(records)} samples, expected {expected} for "
+            f"assay={assay!r}. The deposit changed — re-verify before using it."
+        )
+
+    rows: list[dict[str, object]] = []
+    for record in records:
+        source = record.get("source_name_ch1", "")
+        cohort = next((c for token, c in _SOURCE_COHORT if token in source), None)
+        if cohort is None:
+            raise SampleLoadError(
+                f"{record['gsm_id']}: source_name {source!r} matches no known cohort."
+            )
+        name = record.get("title", "").replace("bulk_RNA_", "")
+        # Absent `diagnosis` IS the control marker: the 8 donor samples carry no
+        # diagnosis characteristic at all, the other 54 read "Multiple myeloma (MM)".
+        diagnosis = record.get("char_diagnosis", "")
+        row: dict[str, object] = {
+            "gsm_id": record["gsm_id"],
+            "sample_name": name,
+            "cohort": cohort,
+            "diagnosis": diagnosis or "none",
+            "sample_type": "normal_bm" if cohort == "Donor" else "myeloma",
+            "source_name": source,
+        }
+        if assay == "scrna":
+            row.update(COHORT_PROTOCOL[cohort])
+        else:
+            row["prep"] = (
+                "CD138+ sorted" if "CD138+ sorted" in source else "unsorted BMMC"
+            )
+        rows.append(row)
+
+    frame = pd.DataFrame(rows)
+
+    disagree = frame.loc[
+        (frame["sample_type"] == "myeloma") != frame["diagnosis"].str.contains("myeloma"),
+        "sample_name",
+    ].tolist()
+    if disagree:
+        raise SampleLoadError(
+            f"cohort and diagnosis disagree for {disagree}. Donor samples must carry "
+            f"no diagnosis and MM samples must carry one."
+        )
+
+    if out_path is not None:
+        out_path.parent.mkdir(parents=True, exist_ok=True)
+        frame.to_csv(out_path, sep="\t", index=False)
+    return frame
+
+
+def load_sample_metadata(assay: str = "scrna", directory: Path | None = None) -> pd.DataFrame:
+    """Load the committed GEO metadata table for `"scrna"` or `"bulk"`."""
+    directory = directory or config.SAMPLE_METADATA_DIR
+    path = directory / f"{assay}_samples.tsv"
+    if not path.exists():
+        raise SampleLoadError(
+            f"Missing {path}. Regenerate with rebuild_sample_metadata_from_soft("
+            f"raw/GSE223060_family.soft.gz, {assay!r}, {path})."
+        )
+    return pd.read_csv(path, sep="\t")
 
 
 # ---------------------------------------------------------------------------
@@ -155,6 +319,7 @@ def load_manifest(
     *,
     drop_excluded: bool = True,
     require_complete: bool = True,
+    with_metadata: bool = True,
 ) -> pd.DataFrame:
     """Load `raw/sample_manifest.csv` and add the metadata derivable from names.
 
@@ -165,20 +330,30 @@ def load_manifest(
         gsm_id, sample_name, patient_id, patient_id_source,
         sample_type, sample_type_certain, excluded
 
-    `drop_excluded` removes `56203_1` (22184-gene reference, missing `TNFRSF17`
-    entirely — every cell would read BCMA-negative for a purely technical reason).
-    Patient 56203 is fully covered by `56203_2`, so no patient coverage is lost.
-    Pass False only to inspect the exclusion, never to analyse it.
+    and, from the committed GEO metadata table (`with_metadata`, the default):
+
+        cohort, chemistry, dead_cell_removal, diagnosis
+
+    `cohort` is the one to watch. WashU cohort 1 ran 10x 3' v2 and everything else ran
+    v3.2/v3.3, but the measured gap in genes detected per cell follows cohort rather
+    than chemistry version: MMRF 1916, WU2 1210, Donor 1103, WU1 1023 (sample-level
+    medians, pre-QC). v2-vs-v3 is 1.38x with overlapping distributions, not the 2-3x
+    the chemistry difference might suggest. Since the headline metric is a fraction of
+    zeros, a 1.9x depth spread across cohorts must be carried as a covariate.
+
+    `drop_excluded` filters `config.EXCLUDED_SAMPLES`, which is currently **empty** —
+    `56203_1` was excluded until 2026-08-24 on a misdiagnosis and is now repaired on
+    read instead (see `config.TRUNCATED_GENE_FILES`). The parameter stays for the next
+    sample that genuinely has to go.
 
     `require_complete` hard-fails on any row not classified `triplet-ok` by the
     manifest script, rather than discovering the problem mid-load.
 
-    NOTE on counts: 62 rows in, 61 after the exclusion, of which 8 are normal-BM
-    controls (`BM2/4/5/6` plus the four `ND_*`, the latter uncertain) and 53 are
-    disease samples mapping to 43 provisional patients. CLAUDE.md's inherited
-    "47 patients / 57 samples" counts the four `ND_*` as disease; if `ND` does mean
-    normal donor, the naive mapping is only ~2 collapses short of the paper's 41,
-    not ~6.
+    NOTE on counts: 62 rows, of which **8 are normal-BM controls** (`BM2/4/5/6` plus
+    the four `ND_*`) and **54 are myeloma** — confirmed against GEO, not inferred.
+    The 54 map to 43 provisional patients under `naive_patient_id`; the series summary
+    reports 53 samples / 41 patients. CLAUDE.md's inherited "47 patients / 57 samples"
+    counted the four donors as disease and is simply wrong.
     """
     manifest_path = Path(path) if path is not None else config.MANIFEST_CSV
     if not manifest_path.exists():
@@ -208,6 +383,25 @@ def load_manifest(
     classified = frame["sample_name"].map(classify_sample)
     frame["sample_type"] = [t for t, _ in classified]
     frame["sample_type_certain"] = [c for _, c in classified]
+
+    # The GEO metadata is authoritative where it exists; the filename rules above are
+    # the fallback. Joining on sample_name rather than gsm_id keeps this working if a
+    # sample is ever re-accessioned.
+    if with_metadata:
+        meta = load_sample_metadata("scrna").set_index("sample_name")
+        unknown = sorted(set(frame["sample_name"]) - set(meta.index))
+        if unknown:
+            raise SampleLoadError(
+                f"{len(unknown)} sample(s) are on disk but absent from the committed "
+                f"GEO metadata table: {unknown[:5]}. Regenerate it with "
+                f"rebuild_sample_metadata_from_soft()."
+            )
+        joined = meta.loc[frame["sample_name"]]
+        for column in ("cohort", "chemistry", "dead_cell_removal", "diagnosis"):
+            frame[column] = joined[column].to_numpy()
+        # GEO overrides the filename guess, and settles it.
+        frame["sample_type"] = joined["sample_type"].to_numpy()
+        frame["sample_type_certain"] = True
 
     frame["excluded"] = frame["sample_name"].isin(config.EXCLUDED_SAMPLES)
 
@@ -266,6 +460,56 @@ def _read_single_column(path: Path, what: str, sample_id: str) -> list[str]:
     return values
 
 
+def _repair_truncated_genes(sample_name: str, truncated: list[str]) -> list[str]:
+    """Replace a truncated `genes.tsv` column with the canonical one for its build.
+
+    `56203_1`'s gene file stops mid-symbol at row 22185 (`KBTBD`, where the reference
+    has `KBTBD7`) while its matrix declares the full 33694 rows — a failed write, not
+    a different reference. The repair substitutes the canonical column from the
+    committed, position-verified gene map.
+
+    What makes this a repair rather than a guess is the prefix assertion: every row
+    the deposit *did* write must match the canonical column exactly, and the final
+    partial row must be a prefix of the symbol it was cut out of. If either fails,
+    the file is damaged in some other way and this raises instead of substituting.
+    """
+    from . import gene_space  # local: gene_space imports config, io does not import it
+
+    spec = config.TRUNCATED_GENE_FILES[sample_name]
+    build = spec["build"]
+    if len(truncated) != spec["deposited_rows"]:
+        raise SampleLoadError(
+            f"{sample_name}: genes.tsv has {len(truncated)} rows, but the recorded "
+            f"truncation is at {spec['deposited_rows']}. The file on disk is not the "
+            f"one this repair was verified against — re-verify before loading it."
+        )
+
+    canonical = list(gene_space.load_gene_map(build)["deposited_symbol"])
+    intact, partial = truncated[:-1], truncated[-1]
+    if intact != canonical[: len(intact)]:
+        first = next(
+            i for i, (a, b) in enumerate(zip(intact, canonical)) if a != b
+        )
+        raise SampleLoadError(
+            f"{sample_name}: genes.tsv is not a prefix of the {build}-gene reference "
+            f"(diverges at row {first + 1}: {intact[first]!r} vs "
+            f"{canonical[first]!r}). It is damaged in some way other than truncation; "
+            f"do not substitute."
+        )
+    if not canonical[len(intact)].startswith(partial):
+        raise SampleLoadError(
+            f"{sample_name}: the final written row {partial!r} is not a prefix of "
+            f"{canonical[len(intact)]!r}, so the file did not simply stop mid-symbol."
+        )
+
+    print(
+        f"  {sample_name}: repaired truncated genes.tsv "
+        f"({len(truncated)} written rows -> {len(canonical)}, "
+        f"prefix verified against the {build}-gene reference)"
+    )
+    return canonical
+
+
 def read_sample(
     sample: str | pd.Series,
     manifest: pd.DataFrame | None = None,
@@ -289,7 +533,9 @@ def read_sample(
                      they must be disambiguated before any concat. The original is
                      kept in obs["barcode"].
         obs          sample_id, gsm_id, sample_name, patient_id, patient_id_source,
-                     sample_type, sample_type_certain, n_genes_ref
+                     sample_type, sample_type_certain, n_genes_ref, genes_repaired,
+                     and (from the GEO table) cohort, chemistry, dead_cell_removal,
+                     diagnosis
         uns          the source paths and the reference row count
 
     `n_genes_ref` is carried in `.obs` (not only `.uns`) because it survives
@@ -307,10 +553,8 @@ def read_sample(
         if len(hits) == 0:
             if sample in config.EXCLUDED_SAMPLES:
                 raise SampleLoadError(
-                    f"{sample!r} is on the exclusion list and is not in the manifest. "
-                    f"It was processed against a 22184-gene reference that lacks "
-                    f"TNFRSF17 (BCMA) — every cell would read BCMA-negative for a "
-                    f"technical reason. Patient 56203 is covered by 56203_2."
+                    f"{sample!r} is on config.EXCLUDED_SAMPLES and was dropped from "
+                    f"the manifest. Pass drop_excluded=False to inspect it."
                 )
             raise SampleLoadError(f"{sample!r} matches no manifest row.")
         if len(hits) > 1:
@@ -333,6 +577,11 @@ def read_sample(
 
     symbols = _read_single_column(genes_path, "genes", sample_id)
     barcodes = _read_single_column(barcodes_path, "barcodes", sample_id)
+
+    repaired = False
+    if str(row['sample_name']) in config.TRUNCATED_GENE_FILES:
+        symbols = _repair_truncated_genes(str(row['sample_name']), symbols)
+        repaired = True
 
     matrix = scipy.io.mmread(matrix_path)
     if matrix.shape != (len(symbols), len(barcodes)):
@@ -369,15 +618,23 @@ def read_sample(
             "patient_id_source": str(row["patient_id_source"]),
             "sample_type": str(row["sample_type"]),
             "sample_type_certain": bool(row["sample_type_certain"]),
+            **{
+                column: str(row[column])
+                for column in ("cohort", "chemistry", "dead_cell_removal", "diagnosis")
+                if column in row
+            },
             "n_genes_ref": len(symbols),
+            "genes_repaired": repaired,
         },
         index=pd.Index([f"{sample_name}_{bc}" for bc in barcodes], name="cell_id"),
     )
     for column in (
-        "sample_id", "gsm_id", "sample_name", "patient_id",
-        "patient_id_source", "sample_type", "n_genes_ref",
+        "sample_id", "gsm_id", "sample_name", "patient_id", "patient_id_source",
+        "sample_type", "n_genes_ref", "cohort", "chemistry", "dead_cell_removal",
+        "diagnosis",
     ):
-        obs[column] = obs[column].astype("category")
+        if column in obs:
+            obs[column] = obs[column].astype("category")
 
     adata = AnnData(
         X=counts,
@@ -390,6 +647,7 @@ def read_sample(
         "barcodes": str(barcodes_path),
         "n_genes_ref": len(symbols),
     }
+    adata.uns["genes_repaired"] = repaired
     return adata
 
 

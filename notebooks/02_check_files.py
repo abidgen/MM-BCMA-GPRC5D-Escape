@@ -157,18 +157,24 @@ for name, count in sorted(name_counts.items(), key=lambda kv: -kv[1]):
 # ## Cell Ranger reference split
 #
 # The single most consequential property of this dataset. The 62 samples were
-# processed against **three different references**, identifiable by the row count of
+# processed against **two different references**, identifiable by the row count of
 # `genes.tsv`:
 #
-# | genes | samples | reference | note |
+# | rows | samples | reference | note |
 # |---|---|---|---|
 # | 33538 | 37 | GRCh38-3.0.0 (Ensembl 93) | |
 # | 33694 | 24 | GRCh38-1.2.0 (Ensembl 84) | |
-# | 22184 | 1  | — | `56203_1` only — **excluded at stage 04** |
+# | 22185 | 1  | GRCh38-1.2.0, **truncated** | `56203_1` only — repaired on read |
 #
-# `56203_1` lacks `TNFRSF17` (BCMA) entirely, so merging it naively would make every
-# cell in it read BCMA-negative for a purely technical reason. Patient 56203 stays
-# fully covered via `56203_2`, so excluding it costs zero patient coverage.
+# **`56203_1` is not a third reference (corrected 2026-08-24).** Its `counts.mtx`
+# header reads `33694 1837 2135520` — a normal 33694-build matrix — but its
+# `genes.tsv` write stopped at row 22185, ending `KBTBD` where the reference has
+# `KBTBD7`, with no trailing newline. `TNFRSF17` (canonical row 25539) was never
+# absent from a reference; it was past the cut. `io.read_sample` substitutes the
+# canonical column behind a prefix assertion. See `config.TRUNCATED_GENE_FILES`.
+#
+# Note the row count is **22185**, not the 22184 recorded previously — that figure
+# was a `wc -l` artifact of the missing trailing newline.
 
 # %%
 gene_files = {}
@@ -189,8 +195,15 @@ ref_df = pd.DataFrame(
 )
 
 print(ref_df["n_genes_ref"].value_counts().sort_index().to_string())
-print("\nminority-reference sample(s):")
-display(ref_df[ref_df["n_genes_ref"] == 22184])
+print("\nsample(s) not on a full reference:")
+# 22185, not 22184: n_genes_ref counts lines by iteration, while `wc -l` counts
+# newlines and this file has none at the end. Matching on the wrong number here
+# displayed an empty table rather than failing.
+display(ref_df[~ref_df["n_genes_ref"].isin([33538, 33694])])
+assert (ref_df["n_genes_ref"] == 22185).sum() == 1, (
+    "expected exactly one truncated gene file (56203_1, 22185 rows) — see "
+    "config.TRUNCATED_GENE_FILES"
+)
 
 # %% [markdown]
 # ### Only three distinct gene files exist

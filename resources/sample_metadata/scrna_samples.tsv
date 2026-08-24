@@ -1,0 +1,63 @@
+gsm_id	sample_name	cohort	diagnosis	sample_type	source_name	chemistry	dead_cell_removal
+GSM6939028	MMRF_1695	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939029	MMRF_1325	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939030	MMRF_1413	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939031	MMRF_1537	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939032	MMRF_1640	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939033	MMRF_1941	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939034	MMRF_1967	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939035	MMRF_2038	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939036	MMRF_2168	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939037	MMRF_1267	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939038	MMRF_1686	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939039	MMRF_1641	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939040	MMRF_1424	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939041	MMRF_1720	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939042	MMRF_1505	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939043	MMRF_1777	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939044	MMRF_2251	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939045	MMRF_2259	MMRF	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, MMRF cohort	10x 3' v3.3	yes
+GSM6939046	25183	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939047	27522_1	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939048	27522_2	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939049	27522_3	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939050	27522_4	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939051	27522_5	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939052	27522_6	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939053	37692_2	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939054	47491_1	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939055	47491_2	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939056	56203_1	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939057	56203_2	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939058	57075_3	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939059	58408_1	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939060	58408_2	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939061	59114_1	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939062	59114_4	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939063	60359_1	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939064	60359_2	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939065	77570	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939066	81012_1	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939067	81012_2	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939068	83942	WU1	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 1	10x 3' v2	no
+GSM6939069	MMY18273	WU2	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 2	10x 3' v3.2	yes
+GSM6939070	MMY21940	WU2	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 2	10x 3' v3.2	yes
+GSM6939071	MMY22933	WU2	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 2	10x 3' v3.2	yes
+GSM6939072	MMY34339	WU2	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 2	10x 3' v3.2	yes
+GSM6939073	MMY34600	WU2	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 2	10x 3' v3.2	yes
+GSM6939074	MMY40511	WU2	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 2	10x 3' v3.2	yes
+GSM6939075	MMY47218	WU2	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 2	10x 3' v3.2	yes
+GSM6939076	MMY67868	WU2	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 2	10x 3' v3.2	yes
+GSM6939077	MMY70893	WU2	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 2	10x 3' v3.2	yes
+GSM6939078	MMY74196	WU2	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 2	10x 3' v3.2	yes
+GSM6939079	MMY80649	WU2	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 2	10x 3' v3.2	yes
+GSM6939080	MMY83942	WU2	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 2	10x 3' v3.2	yes
+GSM6939081	MMY98423	WU2	Multiple myeloma (MM)	myeloma	Patient BMMC, aspirate, scRNAseq, WU cohort 2	10x 3' v3.2	yes
+GSM6939082	ND_083017	Donor	none	normal_bm	Donor BMMC, aspirate, scRNAseq	10x 3' v3.2	yes
+GSM6939083	ND_090617	Donor	none	normal_bm	Donor BMMC, aspirate, scRNAseq	10x 3' v3.2	yes
+GSM6939084	ND_170531	Donor	none	normal_bm	Donor BMMC, aspirate, scRNAseq	10x 3' v3.2	yes
+GSM6939085	ND_170607	Donor	none	normal_bm	Donor BMMC, aspirate, scRNAseq	10x 3' v3.2	yes
+GSM6939086	BM2	Donor	none	normal_bm	Donor BMMC, aspirate, scRNAseq	10x 3' v3.2	yes
+GSM6939087	BM4	Donor	none	normal_bm	Donor BMMC, aspirate, scRNAseq	10x 3' v3.2	yes
+GSM6939088	BM5	Donor	none	normal_bm	Donor BMMC, aspirate, scRNAseq	10x 3' v3.2	yes
+GSM6939089	BM6	Donor	none	normal_bm	Donor BMMC, aspirate, scRNAseq	10x 3' v3.2	yes

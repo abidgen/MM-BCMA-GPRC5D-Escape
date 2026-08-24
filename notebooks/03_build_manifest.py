@@ -6,6 +6,7 @@
 #       extension: .py
 #       format_name: percent
 #       format_version: '1.3'
+#       jupytext_version: 1.19.5
 #   kernelspec:
 #     display_name: mm-qc
 #     language: python
@@ -138,11 +139,11 @@ else:
 # |---|---|---|
 # | 33538 | 37 | |
 # | 33694 | 24 | |
-# | 22184 | 1  | `56203_1` only — **excluded at stage 04** |
+# | 22185 | 1  | `56203_1` only — a **truncated** 33694 file, repaired on read |
 #
-# `56203_1` is missing `TNFRSF17` (BCMA) entirely, so merging it naively would make
-# every cell in it read BCMA-negative for a purely technical reason. Patient 56203 stays
-# covered via `56203_2`.
+# `56203_1`'s `genes.tsv` write failed at row 22185 (ends `KBTBD`, where the 33694
+# reference has `KBTBD7`); its matrix declares the full 33694 rows. `TNFRSF17` was
+# past the cut, not absent. Repaired on read — see `config.TRUNCATED_GENE_FILES`.
 
 # %%
 def count_lines(path: str) -> int:
@@ -195,8 +196,8 @@ LEGACY_TO_CURRENT = {
 def canonicalize(symbols: set) -> set:
     return {LEGACY_TO_CURRENT.get(s, s) for s in symbols}
 
-retained = df[~df["sample_id"].str.endswith("_56203_1")]
-print(f"retained samples: {len(retained)} of {len(df)}  (56203_1 excluded)")
+retained = df
+print(f"retained samples: {len(retained)} of {len(df)}  (56203_1 repaired, not excluded)")
 
 raw_sets, canon_sets = {}, {}
 for ref, sub in retained.groupby("n_genes_ref"):
@@ -259,5 +260,5 @@ df[["sample_id", "format", "n_genes_ref", "matrix_path"]].head(10)
 # ## Next
 #
 # `notebooks/04_qc.ipynb` (env `mm-qc`) — per-sample load via `src/mm_escape/io.py`,
-# QC metrics, MAD-based outlier filtering, `scDblFinder`, `56203_1` excluded,
+# QC metrics, MAD-based outlier filtering (per cohort), `scDblFinder`,
 # per-sample checkpoints to `results/04_qc/`.
