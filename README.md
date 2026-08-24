@@ -138,10 +138,20 @@ composition and sensitivity, so the discordance has more than one possible cause
   three cohorts span two 10x chemistry generations and differ ~1.9× in genes detected
   per cell. That is bounded the same way dropout is — as a covariate in the depth
   regression and a stratum in the permutation null — not assumed away.
-- **Patient-ID mapping is provisional** pending the paper's Supplementary Table S1 (a
-  naive rule yields 43 patients where the paper reports 41 — two sample-name collapses
-  are still being missed). Every affected number is labelled provisional in the output
-  until resolved.
+- **Patient-ID mapping is resolved** (Supplementary Table S1, 2026-08-24): **41
+  patients over 53 in-cohort samples**, reproducing the paper. The naive rule's 43
+  differed by two independent facts — `25183` is deposited but appears in no
+  supplementary table, and `83942`/`MMY83942` are one patient sampled under both
+  WashU protocols. S1 carries **no cytogenetics**, so the t(4;14)/1q21 annotation
+  remains unavailable and the TC subgroup call stays a transcriptional proxy.
+- **The deposit is pre-filtered, differently in each cohort.** WashU cohorts 1 and 2
+  were cut at 10,000 UMIs before deposit; MMRF and the donors were not (MMRF was cut
+  at 10% mitochondrial instead). Plasma cells are the highest-RNA-content cells in
+  marrow, so that ceiling censors a band enriched **20–70× for `GPRC5D`** — meaning 36
+  of the 54 myeloma samples had part of their antigen-positive population removed
+  before the data was public. This inflates the escape fraction for those cohorts and
+  is carried as a covariate with a truncate-all-cohorts sensitivity analysis, not
+  corrected away.
 
 ## Setup
 

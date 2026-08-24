@@ -89,6 +89,28 @@ cutoffs are for a different (healthy PBMC/BMMC) dataset and are not copied
 verbatim — the actual thresholds get re-derived and documented against this
 cohort's own distributions.
 
+**Run 2026-08-24: 204,040 → 172,940 cells (84.8% kept),** thresholds in
+`results/04_qc/qc_thresholds.csv`, one checkpoint per sample keeping **every** barcode
+with `obs["keep"]` set. Two things the data changed, both departures from the
+paragraph above:
+
+- **`pct_counts_in_top_20_genes` is computed and reported but does not filter.**
+  A 5-MAD band on it flags 17% of MMRF and 15% of WashU 1 against 3% of WashU 2, and
+  the flagged cells are two populations: `IGKC` at ~25% of counts (plasma cells) and
+  haemoglobin at ~32% (erythroid debris). The plasma-cell half is the project's
+  subject — `TNFRSF17` is detected in **21.8%** of that decile against **0.8%**
+  elsewhere. An Ig-dominated library is a plasma cell's *normal* state; filtering on
+  it would delete antigen-**positive** malignant cells and inflate the escape
+  fraction. The metric is kept as an ambient-Ig handle for Stage 08 (which needs one,
+  since SoupX cannot run on this deposit) but is not allowed to remove cells.
+- **`pct_counts_mt` is one-sided.** A cell with unusually *few* mitochondrial reads is
+  not low quality, so only the upper bound applies.
+
+**And the deposit turns out to be pre-filtered, differently in each cohort:** WashU 1
+and 2 at <10,000 UMIs and <20% mt, MMRF uncensored on UMIs but cut at <10% mt, donors
+uncensored on both. See Stage 08's note — the WashU UMI ceiling censors a band
+enriched 20–70× for `GPRC5D` and is a live confounder for the headline metric.
+
 **Thresholds are derived per cohort, not pooled.** The three collection cohorts ran
 different 10x chemistries (WashU 1 on 3′ v2 with no dead-cell removal; MMRF on v3.3
 and WashU 2 / donors on v3.2, both with it) and differ ~1.9× in genes detected per
@@ -395,7 +417,11 @@ So the stage reports a range, not a number:
     regression coefficients, distributions). For single-sample patients this collapses
     to a cell bootstrap that cannot see sample-level variation at all, so their
     intervals are optimistic relative to multi-sample patients — stated with the
-    results, not buried. Correct nesting is S1-gated, so this stays provisional.
+    results, not buried. The nesting was S1-gated; S1 landed 2026-08-24, so the real
+    sample→patient map is now available and this is no longer provisional. Eight
+    patients contribute more than one sample (`27522` six, and `47491`, `56203`,
+    `58408`, `59114`, `60359`, `81012`, `83942` two each), which is where the
+    sample-level term actually has something to estimate.
 
 ### Co-negativity enrichment — the key derived metric (added 2026-08-21)
 
@@ -481,15 +507,28 @@ BCMA+FCRL5 cover more of their tumor?* Coverage gets traded off against normal-c
 expression from Stage 09 rather than maximized on its own — a target that covers the
 whole tumor and also hits healthy tissue is not a better target.
 
-**Blocking prerequisite**: `patient_id` mapping is still provisional (a naive rule
-yields 43 patients from 54 myeloma samples vs. the paper's 41/53, so roughly two
-sample-name collapses are still being missed) — this must be
-resolved against Supplementary Table S1 before this aggregation runs for real, or
-a single patient's cells could split across duplicate entries, each producing its
-own wrong, partial escape fraction. The working policy is to **proceed provisionally
-rather than stall**, with every S1-dependent number labelled provisional in the
-output file and figure themselves, so a provisional value can't quietly get mistaken
-for a final one.
+**Blocking prerequisite — DISCHARGED 2026-08-24.** `patient_id` was provisional (a
+naive rule gave 43 patients from 54 myeloma samples vs. the paper's 41/53), and the
+risk was that one patient's cells split across duplicate entries, each producing its
+own wrong, partial escape fraction. Supplementary Table S1 resolved it: **41 patients
+over 53 in-cohort samples**, exactly. Two independent corrections — `25183` is
+deposited but listed in no supplementary table (`in_paper_cohort == False`, retained
+but excludable on purpose), and `83942`/`MMY83942` are one patient sampled under both
+WashU protocols. `io.s1_patient_id` is the mapping and the parser asserts all three
+counts, so a revised S1 fails loudly rather than quietly moving this denominator.
+
+S1 also confirmed the `_N` suffixes are **serial disease-course timepoints**
+(`27522_1` Primary → `_6` Relapse-3), which unblocks the longitudinal arm. It carries
+**no cytogenetics**, so the t(4;14)/1q21 annotation this stage also wanted is still
+unavailable from the deposit.
+
+**A different confounder now takes its place as the thing to watch here.** Stage 04
+found the deposit is pre-filtered differently per cohort: WashU 1 and 2 were cut at
+10,000 UMIs before deposit, MMRF and the donors were not. That ceiling censors a band
+enriched **20–70× for `GPRC5D`**, in 36 of the 54 myeloma samples, and it inflates
+`frac_double_negative` for those cohorts — in the project's own direction of interest.
+It is carried as a covariate, and this stage owes a **truncate-all-cohorts-at-10,000
+sensitivity analysis** alongside the threshold band and depth regression.
 
 ---
 
