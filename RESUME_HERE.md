@@ -3,8 +3,21 @@
 **Last updated:** 2026-08-24
 **Branch:** `main`, everything merged, no feature branches open, working tree clean.
 
-**To resume:** run `pytest` (in `mm-core`) to confirm the loader and gene space are
-still green — 89 pass / 1 skip in ~7 s — then start at "Immediate next actions".
+**To resume — three commands, then read on:**
+
+```bash
+cd /media/wrath/CART_mm_dual_antigen
+git status --short                   # expect no output (clean tree)
+git branch                          # expect only `main`
+conda run -n mm-core pytest -q       # expect 89 passed, 1 skipped, ~7 s
+```
+
+If those are green the environment and data are intact and nothing needs rebuilding.
+Then go to "Immediate next actions" — item 5 is the start point.
+
+**Note:** `main` is ~10 commits ahead of `origin` and has not been pushed. Everything
+is committed locally, so nothing is lost, but the work exists only on this machine
+until `git push`.
 
 Read `CLAUDE.md` first for the settled decisions and data ground truth. This file
 covers only *where execution stands* and *what to do next*.
@@ -18,18 +31,27 @@ verified on all 62 samples, QC/doublet-removal run on the full 61-sample cohort,
 integration not yet run) before switching to Python. **None of the R code is being
 ported.** All dataset knowledge carries forward via `CLAUDE.md`.
 
-**Stages 01-03 are complete: written, executed, asserted, committed.** All three
-notebooks exist and run green (62/62 `triplet-ok`, manifest byte-identical via CLI and
-notebook). The four conda envs are built and their kernels registered. `src/mm_escape/`
-has `config.py` + `gene_space.py` scaffolded and tested against the real files.
+**Stages 01-03 are complete, and stage 04's loader is done.** All three acquisition
+notebooks run green (62/62 `triplet-ok`, manifest byte-identical via CLI and notebook).
+The four conda envs are built with kernels registered. `src/mm_escape/` holds
+`config.py`, `gene_space.py` and `io.py`, covered by an 89-test suite in `tests/`.
+The whole cohort — **62 samples, 204,040 pre-QC cells** — loads in ~2 s and harmonizes
+to 32,991 genes with all 65 required genes present.
 
-**Stage 04 onward does not exist yet.** The next artifact to write is
-`src/mm_escape/io.py`.
+**>> The next artifact is `src/mm_escape/qc.py` + `notebooks/04_qc.ipynb`. <<**
+Nothing from stage 04's QC onward exists.
 
-Three real defects have surfaced so far, all fixed: cross-reference HGNC symbol drift
-(solved properly via Ensembl-ID reconstruction), a wrong bulk RNA-seq inventory in
-`CLAUDE.md`, and a circular dropout-correction formula in the stage 08 plan. Details
-below.
+Five real defects have surfaced so far, all fixed:
+1. Cross-reference HGNC symbol drift — solved properly via Ensembl-ID reconstruction
+   (32,991 genes vs. 22,164, and it prevents *mis-pairing*, not just loss).
+2. A wrong bulk RNA-seq inventory in `CLAUDE.md` (30 usable -> 29, of which 26 match).
+3. A circular dropout-correction formula in the stage 08 plan.
+4. `56203_1` excluded for years on a misdiagnosis — it is a truncated deposit, now
+   repaired on read and retained.
+5. `ND_*` counted as disease rather than donors, which is where the "47 vs 41 patients"
+   gap mostly came from.
+
+Details below, newest session last.
 
 ---
 
@@ -243,14 +265,34 @@ directory were removed. Everything is recoverable from the **`r-build-snapshot`*
    only) and `gene_space.py`. Notebooks 01 and 02 written, executed, committed.
 3. ~~**Build `env-qc`**, register kernels~~ — **DONE 2026-08-21.** All four built and
    registered; every key package import-verified, both R bridges confirmed working.
-4. **>> START HERE << Write `src/mm_escape/io.py`**: the loader replacing `scanpy.read_10x_mtx()`.
-   Handles `counts.mtx` (not `matrix.mtx`), single-column `genes.tsv`, the extra
-   nesting level per sample. Validate against 2-3 real samples before scaling to
-   all 61 — most likely place for a silent format-assumption bug to hide.
-5. **Write `src/mm_escape/qc.py`** and `notebooks/04_qc.ipynb` -> `results/04_qc/`:
-   QC metrics, MAD-based outlier calling (start from 5 MAD, document the actual
-   resulting thresholds for this cohort), `scDblFinder` via `rpy2`. Exclude
-   `56203_1`. Checkpoint per-sample.
+4. ~~**Write `src/mm_escape/io.py`**~~ — **DONE 2026-08-24.** Loads all 62 samples in
+   ~2 s; validated on the four failure-mode samples and end-to-end into `gene_space`.
+   `pyproject.toml` added so `import mm_escape` works (`pip install -e . --no-deps`,
+   done for `mm-qc` and `mm-core`; `mm-annotation`/`mm-communication` need it when
+   stages 06 and 11 arrive). `tests/` added — 89 pass in `mm-core`.
+5. **>> START HERE << Write `src/mm_escape/qc.py`** and `notebooks/04_qc.ipynb` ->
+   `results/04_qc/`: QC metrics (including `pct_counts_in_top_20_genes`), MAD-based
+   outlier calling, `scDblFinder` via the `rpy2` bridge, checkpointing each sample's
+   post-QC AnnData individually so the stage is resumable.
+
+   Four things to get right, all settled and none of them open questions:
+   - **Derive MAD thresholds per cohort, not pooled.** The cohorts differ ~1.9x in
+     genes/cell (MMRF 1916, WU2 1210, Donor 1103, WU1 1023). A pooled MAD would flag
+     much of WashU cohort 1 as low-quality for a batch reason. `obs["cohort"]` is
+     already on every cell.
+   - **Start from 5 MADs but document the thresholds this cohort actually produces** —
+     `sc-best-practices`' numbers are for healthy PBMC/BMMC, not myeloma marrow. Same
+     for the `pct_counts_mt` cap; do not copy the 8%.
+   - **Do not inherit the depositors' QC.** Their stated Seurat filter (drop cells
+     >10,000 UMIs as multiplets) is internally garbled and demonstrably was not applied
+     to what is deposited — the cohort averages ~6,767 UMIs/cell with plenty above 10k.
+     These are Cell Ranger filtered matrices.
+   - **`56203_1` is loaded, not excluded** — `config.EXCLUDED_SAMPLES` is empty and the
+     gene file is repaired on read.
+
+   Write the tests alongside, in `tests/test_qc.py`, following the two-tier split in
+   `tests/conftest.py` (threshold arithmetic needs no data; anything touching matrices
+   goes behind `requires_data`).
 6. Continue through stages 05-12 per `CLAUDE.md`'s pipeline section — notebook
    number N always writes to `results/N_*/`, nothing else. Run them in numeric
    order; number order is execution order.
