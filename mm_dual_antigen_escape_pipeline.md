@@ -89,20 +89,32 @@ cutoffs are for a different (healthy PBMC/BMMC) dataset and are not copied
 verbatim — the actual thresholds get re-derived and documented against this
 cohort's own distributions.
 
+**Thresholds are derived per cohort, not pooled.** The three collection cohorts ran
+different 10x chemistries (WashU 1 on 3′ v2 with no dead-cell removal; MMRF on v3.3
+and WashU 2 / donors on v3.2, both with it) and differ ~1.9× in genes detected per
+cell — MMRF 1916 vs. WashU 1 1023, sample-level medians. A single pooled MAD across
+that spread would flag much of WashU cohort 1 as low-quality for what is a batch
+difference, not a cell-quality one.
+
 Doublet detection uses `scDblFinder` (R), called from Python via an isolated
 `rpy2` bridge contained entirely within the `mm-qc` environment — kept as R
 because it's the benchmarked best-performing method per `sc-best-practices`'s
 cited benchmark (Xi & Li 2021), not swapped to a pure-Python alternative purely
 for language purity.
 
-`56203_1` is excluded here (see `CLAUDE.md`'s Data section — incompatible
-22184-gene reference, missing BCMA entirely; patient 56203 remains covered via
-`56203_2`).
+`56203_1` is **repaired on load, not excluded** (reversed 2026-08-24). It was long
+believed to come from an incompatible 22184-gene reference missing BCMA; it is in
+fact a normal 33694-build sample whose `genes.tsv` write stopped mid-symbol at row
+22185, putting `TNFRSF17` and `IGLC1/2/3` past the cut rather than absent from a
+reference. `io.read_sample` substitutes the canonical column behind a prefix
+assertion that raises rather than guessing. See `CLAUDE.md`'s Data section.
 
 **Ambient RNA correction (SoupX/DecontX) is not run — not an oversight, a hard
 constraint.** Both require the unfiltered Cell Ranger matrix (including empty
-droplets) to estimate the background contamination profile, and GEO only hosts
-the filtered per-sample matrices for this series. The mitigation lives at Stage 08
+droplets) to estimate the background contamination profile, and only the filtered
+per-sample matrices were ever deposited. (Raw reads do exist, under controlled access
+on dbGaP — `phs000159` / `phs000748` — but no unfiltered matrices exist anywhere, so
+the constraint holds either way.) The mitigation lives at Stage 08
 (antigen scoring) instead — an empirically-derived noise floor rather than
 formal ambient correction. Worth understanding for plasma-cell data specifically:
 plasma cells secrete enormous quantities of immunoglobulin transcript, making
@@ -119,8 +131,9 @@ left unquantified; Stage 08 and Stage 09 handle the bounding.
 
 Each sample's post-QC AnnData is checkpointed individually — mirrors the R
 build's resumable-per-sample-checkpoint design, which is worth keeping regardless
-of language (an ~8-minute IO-bound load across 61 samples benefits from
-resumability the same way in either stack).
+of language — QC and doublet detection across 62 samples benefit from resumability
+the same way in either stack. (The load itself is no longer the slow part: the Python
+loader reads all 62 samples, 204,040 pre-QC cells, in about two seconds.)
 
 ---
 
@@ -146,18 +159,27 @@ molecular-subgroup call would quietly lose its highest-risk class — not error 
 never report it. Harmonizing first recovers all four genes (22,164 → 22,168).
 
 The wider lesson the assertions bought: **a required gene coming up missing means
-"check for a legacy symbol", not "biologically absent".** Worth noting too that the
-~11k symbols unique to each build are mostly annotation-version noise (`AC000032.1`
-versus `AC000032.2`) rather than real genes, so the 22,164 figure understates what is
-actually recoverable — tolerable for clone identifiers nothing downstream reads, not
-tolerable for a named gene the pipeline depends on.
+"check for a legacy symbol", not "biologically absent".** The guess that the ~11k
+symbols unique to each build were mostly annotation-version noise (`AC000032.1` versus
+`AC000032.2`) turned out to be far too optimistic — joining on reconstructed Ensembl
+IDs instead of symbols recovers **32,991 genes against 22,164**, because 11,140
+intersected IDs simply carry a different symbol in each build. The symbol join was
+also unsafe, not merely lossy: `TBCE` is a *different* Ensembl entry in each build, so
+a symbol join silently merges two unrelated rows.
 
 Normalize, select highly variable genes, PCA, then `harmonypy` integration keyed
-on `patient_id` (with `n_genes_ref` as an additional covariate) to correct for
-patient-of-origin batch effects. Leiden clustering, UMAP. Includes a diagnostic UMAP
-colored by which reference version (`n_genes_ref`) each cell's sample came from — if
-clusters visibly track that instead of biology, the gene-space intersection failed
-to neutralize processing batch and every downstream antigen call is suspect.
+on `patient_id` (with **both `n_genes_ref` and `cohort`** as additional covariates) to
+correct for patient-of-origin batch effects. Leiden clustering, UMAP. Includes
+diagnostic UMAPs colored by reference version and by cohort — if clusters visibly
+track either instead of biology, the gene-space intersection failed to neutralize
+processing batch and every downstream antigen call is suspect.
+
+**The two covariates are not interchangeable, which is easy to get wrong.** The
+reference build and the collection cohort cut across each other: two WashU cohort 1
+samples sit on the newer 33538 build while the four `ND_*` donors sit on the older
+33694 one. `n_genes_ref` captures which reference processed a sample; `cohort`
+captures which chemistry and protocol generated it, and that is where the ~1.9× depth
+difference lives. Neither substitutes for the other.
 
 **Integration is deliberately confined to the immune compartment.** Harmonizing on
 `patient_id` is right for T/NK/myeloid cells, which should look alike across
@@ -292,7 +314,12 @@ independent call is the only way to catch that. A poor agreement rate invalidate
 Stage 08 and stops the pipeline — it isn't something to note and move past.
 
 **The normal bone marrow samples become a negative control.** `BM2/4/5/6` and the
-`ND_*` samples get run through the identical calling logic. Normal marrow is
+`ND_*` samples get run through the identical calling logic. (That these eight are
+genuinely donor marrow is confirmed, not inferred from their names: the GEO metadata
+gives all eight `source_name = "Donor BMMC"` and no `diagnosis` characteristic, while
+the other 54 samples read "Multiple myeloma (MM)". They also happen to span both
+reference builds, so the control doubles as a build check in a population that carries
+no clone to confound it.) Normal marrow is
 polyclonal, so the correct answer is *no malignant cells found*. If the method
 discovers a clone in healthy marrow, the method is broken and everything downstream
 is worthless. This is the cheapest strong validation available for the project's
@@ -455,7 +482,8 @@ expression from Stage 09 rather than maximized on its own — a target that cove
 whole tumor and also hits healthy tissue is not a better target.
 
 **Blocking prerequisite**: `patient_id` mapping is still provisional (a naive rule
-yields 47 disease patients from 57 samples vs. the paper's 41/53) — this must be
+yields 43 patients from 54 myeloma samples vs. the paper's 41/53, so roughly two
+sample-name collapses are still being missed) — this must be
 resolved against Supplementary Table S1 before this aggregation runs for real, or
 a single patient's cells could split across duplicate entries, each producing its
 own wrong, partial escape fraction. The working policy is to **proceed provisionally
@@ -472,16 +500,22 @@ escape fractions are real?*
 
 **Matched bulk RNA-seq validation.** GSE223061 — the matched bulk data — was
 downloaded at the very start of the project and then never used by the plan.
-`raw/unpacked_bulk/` holds 30 usable bulk samples overlapping the single-cell cohort
-at roughly 28 samples. For those, compare malignant-cell pseudobulk `TNFRSF17` and
-`GPRC5D` against bulk TPM. Agreement means the antigen quantification is technically
+`raw/unpacked_bulk/` holds 29 usable bulk samples, of which **26 have an exact
+single-cell match** — computed from the GEO metadata, not inherited. For those,
+compare pseudobulk `TNFRSF17` and `GPRC5D` against bulk TPM, **cohort by cohort**:
+MMRF bulk is CD138+ sorted and pairs with *malignant-cell* pseudobulk, while WashU
+cohort 1 bulk is unsorted whole marrow and pairs with *whole-sample* pseudobulk.
+Pooling the two would be a real error rather than a nicety — correlating malignant-PC
+pseudobulk against unsorted bulk measures tumour burden, since the dilution by
+non-plasma cells scales with how much tumour is present, and that would corrupt 10 of
+the 26 comparisons in a direction correlated with the metric itself. Agreement means the antigen quantification is technically
 credible — an orthogonal assay, generated independently, agrees with the per-cell
 calls. Disagreement in one specific direction, **bulk-positive where single-cell
 reads zero**, is direct quantified evidence of dropout, and feeds straight back into
 Stage 08's false-negative floor. Either outcome is informative, which is what makes
 this worth doing. Two of the bulk files are empty 114-byte stubs and three sample
-IDs don't line up cleanly with the single-cell names — both documented in
-`CLAUDE.md`, both to be handled rather than silently absorbed.
+IDs (`47499`, `59114_2`, `98433`) have no single-cell counterpart — both documented
+in `CLAUDE.md`, both to be handled rather than silently absorbed.
 
 **Scope correction, 2026-08-21 — bulk validates antigen abundance, not the escape
 fraction.** Bulk averages every cell in the sample together, which destroys the joint

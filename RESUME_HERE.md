@@ -211,7 +211,8 @@ checked.
 - All target genes (`TNFRSF17`, `GPRC5D`, `SLAMF7`, `FCRL5`, `SDC1`, `CD38`, `ITGB7`,
   `NCSTN`, `IGKC`) present in **both** reference builds — the intersection costs no
   markers. 33538-gene build also has `GPRC5D-AS1`; do not substitute it for `GPRC5D`.
-- `raw/unpacked_bulk/` holds **30 usable GSE223061 bulk samples** (18 MMRF TPM tables
+- `raw/unpacked_bulk/` holds **29 usable GSE223061 bulk samples**, **26** of which
+  have an exact scRNA match (18 MMRF TPM tables
   + 12 WashU archives), ~28 overlapping the sc cohort. Previously unused by the plan;
   now the stage 09 validation set.
 - **Two bulk files are empty 114-byte stubs** — `MMRF_1505`, `MMRF_2259`. Exclude;
@@ -446,6 +447,7 @@ recorded as "18 MMRF + 12 WashU = 30 usable" bulk samples; actually **13** WashU
 subtracted the stubs. Both corrected.
 
 The inherited "~28 samples overlap with the scRNA cohort" is now flagged **unverified**
+*(superseded 2026-08-24: computed from the GEO metadata as exactly 26)*
 — it depends on the three bulk/sc ID mismatches and the unresolved S1 mapping. Stage 09
 recomputes it rather than quoting it.
 
@@ -520,6 +522,8 @@ Three samples covering the failure modes — `MMRF_1695` (33538), `27522_1` (336
 
 ### Real finding: the 47-vs-41 patient gap is mostly the `ND_*` samples
 
+*(Superseded 2026-08-24 — GEO confirms `ND_*` are donors; the real figure is 43
+patients from 54 myeloma samples. Kept as the session record.)*
 The inherited "naive rule yields 47 patients from 57 disease samples vs. the paper's
 41 / 53" counts the four `ND_*` samples as **disease**. CLAUDE.md itself treats them as
 controls in two other places, including stage 07's negative control. Counting them
@@ -553,7 +557,7 @@ Installed into `mm-qc` and `mm-core` only, and only as:
 
     conda run -n <env> pip install -e . --no-deps
 
-Both verified afterwards: `mm_escape.io.load_manifest()` returns 61 samples, and
+Both verified afterwards: `mm_escape.io.load_manifest()` returns the full cohort, and
 `mm-core` still reports numpy 2.5.2 / scanpy 1.11.5 / scipy 1.18.0 / pydeseq2 0.5.4 /
 decoupler 2.2.0 / numba 0.67.0 — untouched. `mm-annotation` and `mm-communication`
 need the same one-liner when stages 06 and 11 arrive.

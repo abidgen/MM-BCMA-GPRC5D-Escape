@@ -84,15 +84,27 @@ marrow samples from 41 myeloma patients across the MMRF Immune Atlas Pilot study
 two WashU cohorts, plus normal bone marrow controls (62 sample entries total in the
 GEO archive).
 
-Only processed, *filtered* Cell Ranger output is publicly available for this series —
-no raw FASTQ/SRA accession, and no unfiltered (pre-cell-calling) matrices either, which
-rules out formal ambient-RNA correction (SoupX/DecontX) — see `CLAUDE.md` for how this
-is handled instead. `scripts/01_download_data.sh` pulls and unpacks the data directly
+Only processed, *filtered* Cell Ranger output is publicly available for this series.
+Raw reads exist but are under controlled access on dbGaP (`phs000159` for the healthy
+donors, `phs000748` for MMRF bulk) rather than absent, and no unfiltered
+(pre-cell-calling) matrices were deposited anywhere — which rules out formal
+ambient-RNA correction (SoupX/DecontX) regardless. See `CLAUDE.md` for how that is
+handled instead. `scripts/01_download_data.sh` pulls and unpacks the data directly
 from GEO's FTP.
 
-The matched bulk RNA-seq (GSE223061, ~28 samples overlapping the single-cell cohort —
-a figure inherited from earlier notes and re-derived at stage 09, not taken on faith)
-is used as an **orthogonal check on the antigen quantification** in stage 09: bulk
+The 62 samples span three collection cohorts on **different 10x chemistries** (WashU
+cohort 1 on 3′ v2 with no dead-cell removal; MMRF and WashU cohort 2 on v3.3/v3.2 with
+it), which produces a ~1.9× spread in genes detected per cell across cohorts. Since the
+headline metric is a fraction of zeros, cohort is carried as a covariate rather than
+ignored — see the limitations below.
+
+The matched bulk RNA-seq (GSE223061, **26 samples** with an exact single-cell match,
+computed from the GEO metadata rather than inherited) is used as an **orthogonal check
+on the antigen quantification** in stage 09. The two bulk cohorts are not the same
+assay — MMRF bulk is CD138+ sorted and pairs with malignant-cell pseudobulk, WashU
+cohort 1 bulk is unsorted whole marrow and pairs with whole-sample pseudobulk — so they
+are compared separately, since pooling them would make a third of the comparisons
+measure tumour burden instead of antigen abundance. Bulk
 signal where the single-cell data reads zero is quantified evidence *consistent with*
 dropout, and it bounds the false-negative rate rather than leaving it as a caveat. It
 is not a direct measurement of the dropout rate — the two assays differ in cellular
@@ -122,9 +134,14 @@ composition and sensitivity, so the discordance has more than one possible cause
 - **Marrow expression is not a safety profile.** The healthy-marrow controls give
   normal plasma-cell antigen levels in marrow. GPRC5D's clinically decisive off-tumor
   site is keratinized tissue, which a bone marrow dataset cannot observe at all.
+- **Sequencing depth differs by cohort, and the metric is a fraction of zeros.** The
+  three cohorts span two 10x chemistry generations and differ ~1.9× in genes detected
+  per cell. That is bounded the same way dropout is — as a covariate in the depth
+  regression and a stratum in the permutation null — not assumed away.
 - **Patient-ID mapping is provisional** pending the paper's Supplementary Table S1 (a
-  naive rule yields 47 patients where the paper reports 41). Every affected number is
-  labelled provisional in the output until resolved.
+  naive rule yields 43 patients where the paper reports 41 — two sample-name collapses
+  are still being missed). Every affected number is labelled provisional in the output
+  until resolved.
 
 ## Setup
 
@@ -144,7 +161,25 @@ mamba run -n mm-qc python -m ipykernel install --user --name mm-qc
 mamba run -n mm-core python -m ipykernel install --user --name mm-core
 mamba run -n mm-annotation python -m ipykernel install --user --name mm-annotation
 mamba run -n mm-communication python -m ipykernel install --user --name mm-communication
+
+# make the package importable from notebooks (src/ layout). --no-deps is not
+# optional: envs/*.yml is the dependency manifest, and letting pip resolve into
+# these envs has broken them before.
+mamba run -n mm-qc   pip install -e . --no-deps
+mamba run -n mm-core pip install -e . --no-deps
 ```
+
+### Tests
+
+```bash
+mamba run -n mm-core pytest              # 89 pass, ~7 s, with the deposit present
+mamba run -n mm-core pytest -m "not slow"   # skip the two full-cohort passes
+```
+
+Two-tier on purpose: tests covering the Ensembl-ID gene-space join, the truncated-
+deposit repair and the required-gene assertions need no data at all and run on a fresh
+clone (51 pass, 39 skip). Tests that need the extracted deposit are gated and **skip
+rather than fail**.
 
 ## Pipeline
 
@@ -195,8 +230,10 @@ behind each stage.
 ├── RESUME_HERE.md                         # session state — read first when resuming
 ├── mm_analysis_overview.md                # plain-language explanation of the approach
 ├── mm_dual_antigen_escape_pipeline.md     # pipeline walkthrough (narrative, not code)
-├── envs/                                  # three conda env specs, split by dependency risk
+├── envs/                                  # four conda env specs, split by dependency risk
 ├── src/mm_escape/                         # reusable/testable logic — importable, Codex-reviewable
+├── tests/                                 # pytest suite; most of it runs without raw/
+├── resources/                             # committed gene-space map + parsed GEO metadata
 ├── notebooks/                             # numbered 01-12, jupytext-paired (.ipynb gitignored)
 ├── scripts/                               # 01-03 acquisition — CLI fallback, wrapped by notebooks 01-03
 ├── raw/                                   # data (gitignored — regenerate via scripts/01)
@@ -211,7 +248,18 @@ rebuilt in Python from scratch** — that R build is preserved in git history un
 `r-build-snapshot` tag and is not being ported; the dataset knowledge it earned
 carries forward via `CLAUDE.md`.
 
-Current state: `raw/` intact (62 samples), `scripts/01-03` in place, no Python
-implemented yet. See `RESUME_HERE.md` for exact session state and `CLAUDE.md` for
-full technical context, all confirmed data-format gotchas, and the settled
-architecture decisions.
+Current state (2026-08-24): stages 01-03 written, executed and green. The four conda
+environments are built and verified. `src/mm_escape/` holds `config.py`,
+`gene_space.py` and `io.py`, covered by an 89-test suite. The full cohort — **62
+samples, 204,040 pre-QC cells** — loads and harmonizes to 32,991 genes with every
+required marker present. Stage 04's QC is the next thing to write.
+
+Two data-integrity findings are already baked in. The cross-reference gene join is on
+**reconstructed Ensembl IDs**, not symbols, which recovers 32,991 genes against 22,164
+and prevents silent mis-pairing (`TBCE` is a *different* annotation entry in each
+build). And `56203_1`, long excluded as an incompatible reference missing BCMA, is
+actually a normal sample whose gene file was truncated mid-write; it is repaired on
+read behind an assertion and retained.
+
+See `RESUME_HERE.md` for exact session state and `CLAUDE.md` for full technical
+context, all confirmed data-format gotchas, and the settled architecture decisions.

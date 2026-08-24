@@ -352,8 +352,9 @@ def load_manifest(
     NOTE on counts: 62 rows, of which **8 are normal-BM controls** (`BM2/4/5/6` plus
     the four `ND_*`) and **54 are myeloma** — confirmed against GEO, not inferred.
     The 54 map to 43 provisional patients under `naive_patient_id`; the series summary
-    reports 53 samples / 41 patients. CLAUDE.md's inherited "47 patients / 57 samples"
-    counted the four donors as disease and is simply wrong.
+    reports 53 samples / 41 patients, so two name collapses are still missing. An
+    earlier figure of "47 patients / 57 samples" counted the four donors as disease
+    and is superseded.
     """
     manifest_path = Path(path) if path is not None else config.MANIFEST_CSV
     if not manifest_path.exists():
@@ -663,9 +664,9 @@ def read_samples(
 ) -> Iterator[AnnData]:
     """Yield one AnnData per sample, in manifest order.
 
-    A generator on purpose: the full cohort is ~181k cells across 61 samples and
-    stage 04 checkpoints each sample's post-QC object individually, so nothing needs
-    all 61 raw matrices resident at once.
+    A generator on purpose: the full cohort is 204,040 pre-QC cells across 62 samples
+    and stage 04 checkpoints each sample's post-QC object individually, so nothing
+    needs all 62 raw matrices resident at once.
     """
     if manifest is None:
         manifest = load_manifest()

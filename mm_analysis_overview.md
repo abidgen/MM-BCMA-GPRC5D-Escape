@@ -37,11 +37,21 @@ Pilot study and two internal WashU cohorts), generated specifically to discover 
 therapeutic surface targets in myeloma.
 
 **What's public:** processed, per-sample Cell Ranger output — 62 sample bundles,
-~970 MB total — not raw FASTQ, and notably not even the *unfiltered* count matrices
-(the ones that include empty droplets). That second point matters more than it might
-sound: a common cleanup step called ambient RNA correction needs those unfiltered
-matrices to work, and without them that step simply isn't available for this dataset.
-We handle that gap differently instead — more on that in Stage D below.
+~970 MB total, about 204,000 cells before quality filtering. The raw sequencing reads
+exist but sit behind a controlled-access application at dbGaP, and — more importantly —
+the *unfiltered* count matrices (the ones that include empty droplets) were never
+deposited anywhere. That second point matters more than it might sound: a common
+cleanup step called ambient RNA correction needs those unfiltered matrices, so it
+simply isn't available for this dataset no matter what access you have. We handle that
+gap differently instead — more on that in Stage D below.
+
+**One wrinkle worth knowing about the cohorts.** The 62 samples were collected at
+different sites on different generations of the 10x kit, and they differ by roughly
+1.9× in how many genes get detected per cell. That is a problem here specifically
+because the number this project reports is a *fraction of zeros* — if one cohort's
+cells are read less deeply, more of their genes look absent, and that can masquerade as
+biology. So which cohort a sample came from is carried through the whole analysis as a
+variable to correct for, not discarded.
 
 scRNA-seq still means what it always meant: instead of one averaged gene-expression
 readout per tumor sample (bulk RNA-seq), you get a separate readout for every single
@@ -62,7 +72,20 @@ and get filtered out; some "cells" are actually two cells stuck together in one 
 for "how broken is too broken," we use a statistical method that looks at the actual
 spread of quality across all the real cells in this dataset and flags anything unusually
 far from the middle of that spread — this adapts to the data instead of imposing an
-arbitrary number that might not fit.
+arbitrary number that might not fit. That spread is measured *within each cohort*
+rather than across all of them at once, since otherwise the shallower cohort's normal
+cells would all look like outliers relative to the deeper cohort's.
+
+Two things about the files themselves were not what the project believed, and both were
+caught by checking rather than by assuming. The gene lists carry only gene *names*, not
+stable identifiers — and gene names drift between reference versions, so matching
+samples on names both loses genes and, worse, can match the *wrong* gene. The
+identifiers turned out to be reconstructible from the public references the files were
+built from, which recovered about 33,000 usable genes instead of 22,000. And one
+sample, long excluded on the grounds that its reference was missing the BCMA gene
+entirely, turned out to be a perfectly ordinary sample whose gene-name file had simply
+been cut off part-way through being written; BCMA was past the cut, not absent. It is
+repaired and kept.
 
 ### Stage B — Figure out what kind of cell each cell is
 A bone marrow sample isn't just tumor — it's tumor cells mixed in with T cells, NK
@@ -249,7 +272,7 @@ the two piles of cells. That turns out to be a statistical trap called
 **pseudoreplication** — pooling cells across patients treats one patient's few thousand
 cells as a few thousand independent data points, when really they're all just *one
 patient*. It makes almost anything look significant. So instead each patient gets one
-score, the comparison is across ~41 patients rather than ~181,000 cells, and escape
+score, the comparison is across ~41 patients rather than ~200,000 cells, and escape
 risk is used as a sliding scale instead of being chopped into high/low.
 
 There's also an obvious alternative explanation to rule out: maybe high-escape patients
@@ -307,10 +330,21 @@ in the deliverable rather than waiting to be caught.
 - **The core metric is still something the original dataset's authors didn't
   compute** — this asks a new question of their data, not a reproduction of their paper.
 - **It still closes the loop from biology to a business-relevant conclusion.**
-- **Recognizing and working around real data limitations** — no raw FASTQ, no
-  unfiltered matrices for ambient correction, a mixed-reference-build problem, a
-  patient-ID mapping gap — and documenting each one honestly with a stated mitigation,
-  rather than either ignoring the gap or claiming a workaround fixes it completely.
+- **Recognizing and working around real data limitations** — raw reads only under
+  dbGaP controlled access, no unfiltered matrices for ambient correction anywhere, a
+  mixed-reference-build problem, three collection cohorts on different 10x chemistries,
+  and a patient-ID mapping gap — documenting each one honestly with a stated
+  mitigation, rather than either ignoring the gap or claiming a workaround fixes it
+  completely.
+- **Reading the deposit sceptically, and being repaid for it.** Two of this project's
+  load-bearing "facts" were wrong. The gene files carry no Ensembl IDs, but they turned
+  out to be positional dumps of public references, so the IDs were reconstructible —
+  recovering 32,991 genes against 22,164 on symbols, and preventing a silent
+  mis-pairing where the same symbol means different genes in the two builds. And one
+  sample, excluded for years as an incompatible reference missing BCMA, was really a
+  normal sample whose gene file had been truncated mid-write; the "missing" genes were
+  past the cut. Both were found by checking a claim against the files instead of
+  inheriting it.
 - **Auditing your own headline metric and finding it under-defended.** The original
   plan accounted for one source of error and missed the larger, opposite-signed one
   (dropout). Catching that in your own design — and then reporting a range and a
@@ -321,8 +355,18 @@ in the deliverable rather than waiting to be caught.
   different — and then *not* over-claiming the second when the data only supports the
   first — is the difference between a descriptive number and an actual finding.
 - **Asking whether the same cells lose both antigens**, rather than stopping at how
-  many lose both. That's the question that determines whether a second target actually
-  buys you anything, and it's one contingency table per patient.
+  many lose both. It's one contingency table per patient, and it separates two tumors
+  that look identical on the headline number. Note what it does *not* say: correlated
+  loss erodes how much complementarity the second target delivers, it does not make the
+  second target worthless — adding GPRC5D to BCMA still moves the uncovered fraction
+  from `P(BCMA⁻)` to `P(BCMA⁻ ∩ GPRC5D⁻)`, which is a real gain even under strong
+  co-loss. The incremental coverage gain is reported next to the enrichment for exactly
+  that reason.
+- **Refusing to correct what can only be bounded.** The obvious dropout "correction"
+  multiplies each cell's two negativity probabilities — which assumes the independence
+  the co-escape test exists to interrogate. It is reported as a technical baseline to
+  compare against, never as a corrected truth, and no dropout-corrected point estimate
+  is claimed.
 - **Using the unglamorous data.** The matched bulk RNA-seq and the healthy-marrow
   controls were both already downloaded and both originally slated to sit unused. They
   turned out to supply the project's only independent check on its antigen levels and

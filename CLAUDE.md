@@ -484,14 +484,15 @@ Other gotchas, confirmed by direct inspection:
 
 **Patient mapping is a known unresolved gap, not yet fixed in the R build either.**
 A naive rule (strip a trailing `_<digits>` only when the stem is purely numeric,
-e.g. `27522_1` -> `27522`) yields 47 disease patients from 57 disease samples, vs.
-the paper's reported 41 patients / 53 samples — roughly six sample-name collapses
+e.g. `27522_1` -> `27522`) yields **43 patients from the 54 myeloma samples**, vs. the
+paper's reported 41 patients / 53 samples — so roughly **two** sample-name collapses
 are being missed (`83942`/`MMY83942` is a likely pair). **This must be resolved
 against Supplementary Table S1 before any per-patient aggregation step** — not
 optional, and not yet done in either language's build.
 
-**The 47/57 above is simply wrong: it counts the four `ND_*` samples as disease.
-SETTLED 2026-08-24 against the GEO metadata**, which is now in the repo (see "GEO
+**An earlier figure of 47 patients / 57 disease samples is wrong and is superseded:
+it counted the four `ND_*` samples as disease. SETTLED 2026-08-24 against the GEO
+metadata**, which is now in the repo (see "GEO
 series metadata" below). `!Sample_source_name_ch1` reads **`Donor BMMC, aspirate,
 scRNAseq`** for all four `ND_*` and all four `BM*`, and those eight are exactly the
 samples carrying no `diagnosis` characteristic; the other **54 read
