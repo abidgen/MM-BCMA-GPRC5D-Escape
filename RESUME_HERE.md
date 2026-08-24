@@ -569,6 +569,86 @@ individually. The loader underneath it is done and green.
 
 ---
 
+## 2026-08-24 (same session) — GEO metadata arrived and rewrote three ground truths
+
+Six GEO metadata files appeared in `raw/`. They are ~8 KB each and they overturned more
+of the inherited ground truth than anything since the gene-space work. All committed.
+
+### `56203_1` recovered — the exclusion was a misdiagnosis
+
+    counts.mtx header:            33694 1837 2135520   <- normal 33694 matrix
+    genes.tsv:                    22185 rows, ends 'KBTBD', no trailing newline
+    33694 reference row 22185:    'KBTBD7'
+    rows 1..22184 vs reference:   identical (strict prefix)
+
+The gene-file write failed part-way. `TNFRSF17` (row 25539) and `IGLC1/2/3` (rows
+32548-32552) were **past the cut, not absent from a reference**. The "22184 genes"
+figure was a `wc -l` artifact of the missing trailing newline.
+
+`io.read_sample` substitutes the canonical column from the committed gene map behind a
+prefix assertion — every written row must match, and the final partial row must be a
+prefix of the symbol it was cut from, or it raises. Both failure paths tested.
+**`EXCLUDED_SAMPLES` is now empty. Cohort: 62 samples, 204,040 pre-QC cells.**
+
+### `ND_*` settled — they are donors
+
+GEO gives all four `ND_*` and all four `BM*` `source_name = "Donor BMMC"` and **no
+`diagnosis` characteristic**; the other 54 read "Multiple myeloma (MM)". The morning's
+hypothesis is now fact, and `sample_type_certain` is True everywhere. Naive mapping is
+**54 samples / 43 patients** vs. the paper's 53 / 41 — two collapses short, not six.
+
+### Cohort/chemistry — and a number I had to walk back
+
+`resources/sample_metadata/{scrna,bulk}_samples.tsv` are committed (parsed by
+`io.rebuild_sample_metadata_from_soft`); `load_manifest` joins them, so every cell
+carries `cohort`, `chemistry`, `dead_cell_removal`, `diagnosis`.
+
+**I first said v2-vs-v3 was a 2-3x sensitivity gap. Measured, it is 1.38x with
+overlapping distributions.** Sample-level medians of genes per pre-QC cell:
+
+    MMRF   v3.3   1916      WU2   v3.2   1210
+    Donor  v3.2   1103      WU1   v2     1023
+
+    v2 vs all-v3: 1023 vs 1408 = 1.38x, Mann-Whitney p = 6.5e-05
+    v2 max 1602 > v3 min 793, so the distributions OVERLAP
+
+The axis that separates is **cohort** (MMRF ~1.9x the rest), of which chemistry is one
+component alongside site and protocol. Still must be modelled — a 1.9x depth spread
+tracking cohort will move a fraction-of-zeros metric — but **do not quote a "2-3x
+chemistry effect"**; CLAUDE.md now says so explicitly.
+
+**`n_genes_ref` cannot stand in for it**: the build split cuts across cohorts (two WU1
+samples on 33538, the four `ND_*` on 33694). Stage 05 needs both covariates.
+
+### Three more corrections, all in CLAUDE.md
+
+- **Bulk overlap is 26 exact matches**, computed, not the inherited "~28". And the two
+  bulk cohorts are different assays: **MMRF is CD138+ sorted, WashU 1 is unsorted
+  BMMC**. Pooling them would make 10 of 26 comparisons measure tumour burden instead
+  of antigen abundance. Stage 09 pairs sorted bulk with malignant pseudobulk and
+  unsorted bulk with whole-sample pseudobulk.
+- **Raw data exists under controlled access** (dbGaP `phs000159` / `phs000748`), not
+  "does not exist". Conclusion unchanged — still no unfiltered matrices — but the
+  claim was too strong.
+- **The `_N` suffix reading reversed.** Bulk suffixes are always a subset or overlap of
+  the scRNA ones, never a different scheme, and `37692_2` / `57075_3` are *lone*
+  samples with non-`_1` suffixes — which a fraction/sort/replicate label would not be.
+  A serial per-patient index explains all of it. Not proof of *timepoint*, S1 still
+  settles it, but the longitudinal arm is worth planning for now.
+
+Caveat on all of the above: **the deposit's own metadata is not self-consistent** — it
+claims Cell Ranger v3.0.0 for all 62 samples, which the files contradict for 24. Every
+claim taken from the SOFT files was verified against the data before being written down.
+
+### Next artifact: `src/mm_escape/qc.py` + `notebooks/04_qc.ipynb`
+
+Unchanged, with one addition: **MAD thresholds are derived per cohort, not pooled.** A
+pooled MAD across a 1.9x depth spread would flag much of WashU cohort 1 as low-quality
+for a batch reason. The donors span both reference builds, so stage 07's negative
+control doubles as a build control.
+
+---
+
 ## Status
 
 Stages 01-03 complete and green; stage 04's loader done and validated. Envs built, kernels registered, gene space solved and
