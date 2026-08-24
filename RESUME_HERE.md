@@ -542,6 +542,23 @@ for our BCMA-reference reason. So `io.py` encodes the uncertainty in the data ra
 than in a comment: `sample_type == "normal_bm"` with `sample_type_certain == False`.
 S1 still settles it, and `patient_id_source == "naive"` still rides on every cell.
 
+### `pyproject.toml` added — `import mm_escape` did not work in any env
+
+The package was never installed anywhere, so a stage-04 notebook could not have
+imported the loader without a `sys.path` hack. Added a minimal `pyproject.toml`
+(setuptools, src layout) with **`dependencies = []` on purpose** — `envs/*.yml` is the
+dependency manifest, and pip must never resolve anything into these envs (that is what
+downgraded numpy 2.5.2 -> 1.26.4 during setup and broke four packages at once).
+
+Installed into `mm-qc` and `mm-core` only, and only as:
+
+    conda run -n <env> pip install -e . --no-deps
+
+Both verified afterwards: `mm_escape.io.load_manifest()` returns 61 samples, and
+`mm-core` still reports numpy 2.5.2 / scanpy 1.11.5 / scipy 1.18.0 / pydeseq2 0.5.4 /
+decoupler 2.2.0 / numba 0.67.0 — untouched. `mm-annotation` and `mm-communication`
+need the same one-liner when stages 06 and 11 arrive.
+
 ### Next artifact: `src/mm_escape/qc.py` + `notebooks/04_qc.ipynb`
 
 MAD-based outlier calling (5 MADs on `log1p_total_counts`,

@@ -1,0 +1,22 @@
+# Packaging exists for one reason: so `import mm_escape` works from a notebook in any
+# of the four conda environments, under the src/ layout. It is NOT the dependency
+# manifest — envs/*.yml is. `dependencies` is deliberately EMPTY, and the install is
+# always `pip install -e . --no-deps`, because letting pip resolve anything into these
+# envs is what silently downgraded numpy 2.5.2 -> 1.26.4 during setup and broke
+# scanpy/scipy/pydeseq2/zarr at once. See CLAUDE.md's Environment section.
+#
+#   conda run -n mm-qc pip install -e . --no-deps      # and mm-core, mm-annotation,
+#                                                      # mm-communication as needed
+[build-system]
+requires = ["setuptools>=68"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "mm-escape"
+version = "0.1.0"
+description = "MM dual-antigen (BCMA/GPRC5D) escape risk analysis for GSE223060"
+requires-python = ">=3.12"
+dependencies = []
+
+[tool.setuptools.packages.find]
+where = ["src"]
