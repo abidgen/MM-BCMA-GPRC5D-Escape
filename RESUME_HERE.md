@@ -1,11 +1,10 @@
 # RESUME HERE — MM Dual-Antigen pipeline (Python rebuild), session state
 
-**Last updated:** 2026-08-21
-**Branch:** `review3-stage08-corrections` — one unmerged commit (doc corrections).
-`main` holds everything else. Working tree clean.
+**Last updated:** 2026-08-24
+**Branch:** `main`, everything merged, no feature branches open, working tree clean.
 
-**To resume:** `git checkout main && git merge --ff-only review3-stage08-corrections`
-(or review the diff first), then start at "Immediate next actions".
+**To resume:** run `pytest` (in `mm-core`) to confirm the loader and gene space are
+still green — 89 pass / 1 skip in ~7 s — then start at "Immediate next actions".
 
 Read `CLAUDE.md` first for the settled decisions and data ground truth. This file
 covers only *where execution stands* and *what to do next*.
@@ -639,6 +638,30 @@ samples on 33538, the four `ND_*` on 33694). Stage 05 needs both covariates.
 Caveat on all of the above: **the deposit's own metadata is not self-consistent** — it
 claims Cell Ranger v3.0.0 for all 62 samples, which the files contradict for 24. Every
 claim taken from the SOFT files was verified against the data before being written down.
+
+### Test suite added — `tests/`, run in `mm-core`
+
+Two-tier, because the loader's data lives on one machine and the invariants worth
+protecting mostly do not need it:
+
+    pytest                     89 pass,  1 skip   (~7 s, deposit present)
+    pytest (no raw/)           51 pass, 39 skip   (~0.5 s, fresh clone)
+    pytest -m "not slow"       skips the two full-cohort passes
+
+Data-backed tests are gated on `conftest.requires_data` and **skip rather than fail**.
+They run over `conftest.CANONICAL_SAMPLES` — `MMRF_1695` (33538), `27522_1` (33694,
+spells NSD2 as WHSC1), `BM4` (donor), `56203_1` (truncated) — which cover the
+deposit's failure modes. Add cases there rather than picking samples ad hoc.
+
+Assertions pin the known invariants (204,040 pre-QC cells, 32,991 intersected genes,
+11,140 drifted symbols, 26 matched bulk samples, the per-cohort depth ordering), so a
+regression in the loader, the gene map or the metadata tables fails a test instead of
+quietly changing a result.
+
+Two fixes the suite surfaced: `scipy.io.mmread` was called without `spmatrix=`, which
+scipy 1.20 flips to sparse *arrays* (now pinned to `spmatrix=True`, since the
+scanpy/anndata stack is spmatrix-native); and `pytest` was only in `mm-core`
+transitively, now declared in `envs/env-core.yml`.
 
 ### Next artifact: `src/mm_escape/qc.py` + `notebooks/04_qc.ipynb`
 
