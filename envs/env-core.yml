@@ -29,6 +29,7 @@ dependencies:
   - jupyterlab
   - ipykernel
   - jupytext
+  - pytest              # tests/ -- see pyproject.toml [tool.pytest.ini_options]
   - pip
   - pip:
       - infercnvpy      # not on conda-forge or bioconda

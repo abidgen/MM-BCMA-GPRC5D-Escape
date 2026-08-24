@@ -20,3 +20,10 @@ dependencies = []
 
 [tool.setuptools.packages.find]
 where = ["src"]
+
+# The suite lives in mm-core: io.py and gene_space.py have no R dependency, and
+# mm-core is the env stages 05-10 and 12 run in. Most tests need no data at all --
+# see tests/conftest.py for the two-tier split.
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+markers = ["slow: loads the whole 62-sample cohort"]

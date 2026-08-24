@@ -910,6 +910,28 @@ break schema parity with the script.
 - Every module in `src/mm_escape/` should be reviewable and lightly testable
   independent of any notebook.
 
+**The test suite lives in `tests/` and runs in `mm-core`** (`pytest`, config in
+`pyproject.toml`). It is deliberately **two-tier**:
+
+- **Most tests need no data at all.** The things most worth protecting — the
+  Ensembl-ID join, the `make.unique` reimplementation, the `56203_1` truncation
+  repair, the required-gene assertions, the GEO metadata join — are exercised entirely
+  by what is committed under `resources/`. On a fresh clone with no `raw/`:
+  **51 pass, 39 skip.**
+- **Data-backed tests are gated on `raw/` and skip rather than fail**, via
+  `conftest.requires_data`. With the deposit present: **89 pass, 1 skip, ~7 s.**
+
+`pytest -m "not slow"` skips the two full-cohort passes. Data-backed tests run over
+the four canonical samples in `conftest.CANONICAL_SAMPLES`, chosen because they cover
+the deposit's failure modes — `MMRF_1695` (33538 build), `27522_1` (33694, legacy
+symbols), `BM4` (donor), `56203_1` (truncated). Add cases there rather than picking
+new samples ad hoc.
+
+Assertions encode the cohort's known invariants (204,040 pre-QC cells, 32,991
+intersected genes, 11,140 drifted symbols, 26 matched bulk samples, the per-cohort
+depth ordering), so a regression in the loader, the gene map or the metadata tables
+fails loudly instead of quietly changing a number.
+
 ---
 
 ## Pipeline stages (numbers match notebook filenames and result directories)

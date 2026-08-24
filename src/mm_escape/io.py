@@ -583,7 +583,10 @@ def read_sample(
         symbols = _repair_truncated_genes(str(row['sample_name']), symbols)
         repaired = True
 
-    matrix = scipy.io.mmread(matrix_path)
+    # spmatrix=True is explicit, not decorative: scipy 1.20 flips the default to
+    # sparse *arrays*, and the scanpy/anndata stack this feeds is still spmatrix-native.
+    # Pinning it here keeps the loader's return type stable across that change.
+    matrix = scipy.io.mmread(matrix_path, spmatrix=True)
     if matrix.shape != (len(symbols), len(barcodes)):
         raise SampleLoadError(
             f"{sample_id}: {matrix_path.name} is {matrix.shape[0]}x{matrix.shape[1]} but "
