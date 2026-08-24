@@ -482,13 +482,47 @@ Other gotchas, confirmed by direct inspection:
   `98433` ↔ `MMY98423` pairing is doubtful rather than a simple typo. Do not guess
   these; they are 3 of 29 and stage 09 works without them.
 
-**Patient mapping is a known unresolved gap, not yet fixed in the R build either.**
-A naive rule (strip a trailing `_<digits>` only when the stem is purely numeric,
-e.g. `27522_1` -> `27522`) yields **43 patients from the 54 myeloma samples**, vs. the
-paper's reported 41 patients / 53 samples — so roughly **two** sample-name collapses
-are being missed (`83942`/`MMY83942` is a likely pair). **This must be resolved
-against Supplementary Table S1 before any per-patient aggregation step** — not
-optional, and not yet done in either language's build.
+**Patient mapping — SOLVED 2026-08-24 by Supplementary Table S1.** S1 landed in
+`raw/` and closes this. The naive rule (strip a trailing `_<digits>` only when the
+stem is purely numeric, e.g. `27522_1` -> `27522`) gives **43 patients from the 54
+myeloma samples** against the paper's 41 / 53. Both gaps close exactly, and the two
+corrections are independent of each other:
+
+- **`25183` is deposited but appears in NO supplementary table** — not the clinical
+  summary, not the disease-stage sheet. It is what the 53-vs-54 gap is made of.
+  `54 - 1 = 53`. It is **not dropped**: the data is real and stage 07 can use it. It
+  carries `in_paper_cohort == False` and `clinical_source == "none"` so a per-patient
+  aggregate excludes it deliberately rather than by accident.
+- **`83942` (WashU 1) and `MMY83942` (WashU 2) are one patient.** S1 lists them as
+  two, but with identical age (63), gender (Male), race (White), ISS stage (3) and
+  treatment (Unknown). One patient sampled under both WashU protocols.
+  `43 - 1 - 1 = 41`.
+
+Implemented in `io.rebuild_clinical_metadata_from_s1` -> `resources/sample_metadata/`
+(`patients_clinical.tsv`, 43 rows; `sample_disease_stage.tsv`, 22). `io.s1_patient_id`
+is the mapping; `load_manifest` now emits `patient_id_source == "S1"` and keeps the
+naive answer as `patient_id_naive` for comparison. `_assert_s1_reproduces_the_paper`
+checks all three counts off the committed GEO table, so a revised S1 fails loudly
+instead of quietly moving the denominator of `frac_double_negative`.
+
+**What else S1 carries.** Per patient: age, sex, race, ISS stage, treatment regimen,
+time-to-progression-or-death. Per sample: disease stage — but **WashU cohort 1 only**.
+MMRF and WashU cohort 2 get `disease_stage = NA` and one is *not* imputed;
+`newly_diagnosed` is a guess for those cohorts, not a datum. Two S1 patients
+(`47499`, `98433`) are bulk-only and have no scRNA sample — they stay in the patient
+table for stage 09.
+
+**The `_N` suffixes are serial disease-course timepoints. SETTLED, not inferred.**
+S1 sheet 2 reads:
+
+    27522_1  Primary     27522_2  Remission-1   27522_3  Relapse-1
+    27522_4  Relapse-2   27522_5  Remission-2   27522_6  Relapse-3
+    47491_1  SMM         47491_2  Primary       58408_1  SMM  -> 58408_2 Primary
+
+This confirms outright what the 2026-08-24 bulk/scRNA suffix argument had inferred,
+and **the longitudinal arm in the S1-gated section below is now real rather than
+speculative**. It also explains the lone non-`_1` samples: `37692_2` and `57075_3`
+are later timepoints whose earlier draws were not deposited.
 
 **An earlier figure of 47 patients / 57 disease samples is wrong and is superseded:
 it counted the four `ND_*` samples as disease. SETTLED 2026-08-24 against the GEO
@@ -505,10 +539,29 @@ collection dates.
 | **`ND_*` as donors, `56203_1` repaired and retained** | **54** | **43** |
 
 The series summary states "53 bone marrow (BM) aspirates from 41 MM patients"
-verbatim, matching the paper. So 54 deposited MM samples vs. 53 analysed, and 43 naive
-patients vs. 41 — **two name collapses still missing, not six**, with
-`83942`/`MMY83942` the obvious candidate. S1 is still required to close it, but the
-denominator uncertainty is now two samples rather than six.
+verbatim, matching the paper — and matching what the S1 mapping above now produces.
+The denominator is settled; there is no remaining uncertainty in it.
+
+**The other five supplementary tables are committed too** (~500 KB, `raw/`, see
+`.gitignore` for which is which). Two are directly useful downstream and neither is
+yet consumed:
+- **Table S3** (file `s3`) — a 38x38 Pearson correlation matrix over the paper's
+  candidate target genes, plus per-cohort co-expressed and mutually-exclusive gene
+  pairs. It includes `GPRC5D` x `TNFRSF17`, and it is a caution as much as a
+  comparator: the pooled r is **0.064**, but per cohort it is **MMRF +0.62,
+  WU2 +0.54, WU1 -0.09** — the pair appears in the paper's co-expressed *and*
+  mutually-exclusive lists depending on cohort, and the sign tracks the cohort depth
+  ordering exactly. Whatever stage 08's co-escape enrichment finds must be read
+  against that. (Note these are sample-level correlations, not the per-cell
+  co-negativity stage 08 computes — related question, different unit.)
+- **Table S5** (file `s6`) — the paper's own bulk-vs-scRNA Pearson r per gene for
+  MMRF. A direct external comparator for stage 09.
+
+Not useful here: Table S2 (target novelty tiers, mild framing value), Table S4
+(NetMHC peptide-HLA binding), Table S6 (recurrent mutations, over different MMRF
+samples). **File `s5` is strict-OOXML** — `openpyxl` reports zero sheets for it and it
+is not corrupt; and files `s5`/`s6` are numbered off-by-one against their in-file
+titles.
 
 **Ambient RNA correction (SoupX/DecontX) is not possible for this dataset.** Both
 require the *unfiltered* Cell Ranger matrix (including empty droplets) to estimate
@@ -971,6 +1024,80 @@ the genes/cell of WU1's, so a pooled MAD would flag much of WashU cohort 1 as
 low-quality for a batch reason (see the GEO metadata section). `56203_1` is loaded with
 its repaired gene column, not excluded. Checkpoint each sample's post-QC AnnData
 individually (mirrors the R build's resumable-per-sample design).
+
+**RUN AND COMPLETE 2026-08-24.** 204,040 pre-QC cells over all 62 samples ->
+**172,940 kept (84.8%)**. `results/04_qc/` holds the thresholds, the per-sample and
+per-cohort reports, the MAD sensitivity sweep, three figures, and one checkpoint per
+sample under `samples/` with **every barcode retained** and `obs["keep"]` set — cells
+are annotated, never deleted, so stage 08 can ask what QC cost. The stage runs in two
+passes: per sample (metrics + `scDblFinder`, ~210 s for the cohort) then per cohort
+(MAD thresholds, ~11 s, off `obs` alone — it never concatenates the matrices).
+
+Two things the data forced, both departures from what this section originally
+specified, and both made on this cohort's numbers rather than on preference:
+
+1. **`pct_counts_in_top_20_genes` is computed and reported but does NOT filter.**
+   A 5-MAD band on it flags 17% of MMRF and 15% of WU1 against 3% of WU2 — too uneven
+   to be catching one thing. Inspecting those cells (MMRF_1695, top decile) shows two
+   populations: `IGKC` at ~25% of counts (plasma cells) and `HBB`/`HBA1/2` at ~32%
+   (erythroid debris). The plasma-cell half is the project's subject — `TNFRSF17`
+   detected in **21.8%** of that decile vs **0.8%** elsewhere, `SDC1` **18.8%** vs
+   **0.0%**. A plasma cell is a professional secretor; an Ig-dominated library is its
+   normal state, not a defect. Filtering on it would preferentially delete
+   antigen-**positive** malignant cells and inflate `frac_double_negative`. The metric
+   is kept because it is one of the few ambient-Ig handles available at all (SoupX
+   needs unfiltered matrices this deposit lacks) — it is just not allowed to delete
+   cells. See `qc.DEFAULT_FILTERS` vs `qc.ALL_FLAGS`; opting it back in is one
+   explicit argument, for a sensitivity re-run.
+2. **The deposit is already filtered, differently per cohort — see the correction
+   below.**
+
+Thresholds this cohort actually produced (`results/04_qc/qc_thresholds.csv` has all of
+them; `pct_counts_mt` is one-sided because a cell with unusually *few* mitochondrial
+reads is not low quality):
+
+| cohort | log1p_total_counts band | pct_counts_mt cap | % removed |
+|---|---|---|---|
+| MMRF | [4.24, 13.60] (MAD 0.94) | 12.6% (never binds — see below) | 4.7% |
+| WU1 | [6.10, 10.24] (MAD 0.41) | 8.6% | 14.1% |
+| WU2 | [5.83, 10.37] (MAD 0.45) | 12.9% | 18.0% |
+| Donor | [6.37, 10.08] (MAD 0.37) | 11.7% | 22.6% |
+
+MMRF's band is ~2x wider than the others' because its own depth distribution is much
+more dispersed, so at 5 MADs it removes nothing but doublets. The removal rate is
+stable from 4 to 6 MADs (16.5% -> 14.6% overall), so nothing downstream hangs on the
+exact count. `min_genes = 200` flags nothing — deliberately, it is a safety net, and a
+higher floor would hit the shallow cohorts hardest.
+
+**CORRECTION — the deposit IS pre-filtered, and differently in each cohort.** An
+earlier note in this project held that the depositors' stated Seurat filter (drop
+cells above 10,000 UMIs) "was not applied to what is deposited", reasoning from a
+cohort-wide average UMI count. That average pooled MMRF with WashU and hid a
+per-cohort truth. Read per cohort the boundaries are unmistakable — a `max` of exactly
+9,999 or 10.00 is a cutoff, not a distribution:
+
+| cohort | UMI ceiling | UMI floor | pct_mt ceiling | gene floor |
+|---|---|---|---|---|
+| WU1, WU2 | **< 10,000** | >= 1,000 | < 20% | >= 200 |
+| MMRF | none (max ~269,000) | >= 1,000 | **< 10%** | >= 200 |
+| Donor | none (max ~119,000) | none | < 20% | >= 200 |
+
+**This is a first-order problem for stage 08, not bookkeeping.** Malignant plasma
+cells are the highest-RNA-content cells in marrow, so a 10,000-UMI ceiling does not
+remove a random slice. Measured in the uncensored cohorts, where the band is still
+visible, cells above 10,000 UMIs are enriched **3-21x for `TNFRSF17`** and **20-70x
+for `GPRC5D`** (`results/04_qc/umi_censoring_effect.csv`). So **36 of the 54 myeloma
+samples had the antigen-positive tail of their own tumours removed before deposit**,
+which inflates `frac_double_negative` for WU1/WU2 relative to MMRF — a bias in the
+project's own direction of interest, and one that is baked in and cannot be undone.
+
+Deliberately **not** corrected at stage 04. Truncating MMRF and Donor to match would
+discard 42% of MMRF's cells to make every cohort equally damaged; QC's job is to
+remove bad cells, not destroy good ones to equalise two cohorts. It is carried forward
+as a quantified confounder, and **stage 08 must run the truncate-everything-at-10k
+version as a sensitivity analysis**, where it costs nothing and answers the question
+directly. Note this also means the "1.9x cohort depth gap" documented above is partly
+*censoring*, not only chemistry.
 
 **05 — Gene-space intersection, integration, clustering**
 (`notebooks/05_integration_clustering.ipynb`, `src/mm_escape/gene_space.py` +
@@ -1632,7 +1759,7 @@ The final stage; consumes the output of everything upstream. Assembles:
 
 ## Status / immediate next step
 
-**Stages 01-03 are run and verified. Stage 04's loader exists; its QC does not yet.**
+**Stages 01-04 are run and verified. Stage 05 is the next artifact.**
 The working tree is clean (R build removed, preserved under `r-build-snapshot`), `raw/`
 is intact at 62 samples, `scripts/01-03` are confirmed (62/62 `triplet-ok`), notebooks
 01-03 are written and executed, the four `envs/*.yml` are built with kernels
@@ -1654,16 +1781,44 @@ samples** (155,890 myeloma / 48,150 donor).
 from `resources/sample_metadata/`, and every cell carries them — stage 04 needs
 `cohort` before it can derive thresholds.
 
+**`qc.py` and `notebooks/04_qc.ipynb` are written and run (2026-08-24).** 204,040 ->
+172,940 cells; per-cohort thresholds derived and documented; `scDblFinder` run on all
+62 samples; one checkpoint per sample under `results/04_qc/samples/` with every
+barcode retained. Read the stage-04 entry above for the two departures the data forced
+and the pre-filtering correction — both are load-bearing for stage 08.
+
+**Supplementary Table S1 landed 2026-08-24 and is parsed.** The patient mapping is
+resolved (41 patients / 53 in-cohort samples), the `_N` suffixes are confirmed as
+serial timepoints, and clinical covariates reach every cell. The S1 policy below is
+therefore mostly discharged — see it for what remains.
+
 First actions, in order:
-1. Write `src/mm_escape/qc.py` (MAD outlier calling + the `scDblFinder` rpy2 bridge)
-   and `notebooks/04_qc.ipynb` against it, in `mm-qc`. The loader it builds on is
-   done — do not re-litigate `io.py`.
-2. Re-derive the MAD thresholds and the `pct_counts_mt` cap against THIS cohort's
-   distributions; do not copy `sc-best-practices`'s PBMC/BMMC demo numbers.
-3. Checkpoint each sample's post-QC AnnData individually (resumable per sample), then
-   stage 05 does the gene-space intersection on those checkpoints.
+1. Write `src/mm_escape/integration.py` and `notebooks/05_integration_clustering.ipynb`
+   in `mm-core`, reading the stage-04 checkpoints (`qc.load_checkpoints`, or
+   per-sample). Filter to `obs["keep"]` there, not in stage 04 — the checkpoints hold
+   every barcode on purpose.
+2. Gene-space intersection via `gene_space.py` (already written and tested):
+   `attach_ensembl_ids` per sample, `intersect_gene_space`, `to_canonical_symbols`,
+   `assert_required_genes`. Expect 32,991 genes. Report what harmonization recovers.
+3. Harmony keyed on `patient_id` with `n_genes_ref` AND `cohort` as covariates. Note
+   `patient_id` is now the S1 mapping, so the 8 donors and `25183` need a deliberate
+   decision rather than a default.
+4. The malignant compartment must NOT use the Harmony embedding (stage 10 depends on
+   per-patient un-integrated subclustering); state that in the notebook.
 
 ### Supplementary Table S1 policy (decided 2026-08-20)
+
+**SUPERSEDED 2026-08-24 — S1 is in the repo and parsed.** Kept for the record, and
+because the "label provisional output as provisional" discipline still applies to
+anything computed before it landed. What S1 closed: the patient mapping (41/53), the
+`_N` suffix meaning (serial timepoints), disease stage for WashU cohort 1, and ISS /
+treatment / TTPD per patient. What it does **not** close: per-sample disease stage for
+MMRF and WashU 2 (absent, not imputed), cytogenetics — S1 carries **no** t(4;14),
+1q21 or other karyotype column, so stage 10's TC proxy has nothing in this deposit to
+validate against and stays a proxy — and the three bulk/sc ID mismatches, of which
+`47499`/`98433` are now explained as bulk-only patients that S1 does list.
+
+The original policy read:
 
 S1 is still not in the repo and still blocks the patient mapping. **Do not stall the
 pipeline on it.** The policy is: build everything S1-independent first, running on
@@ -1747,8 +1902,26 @@ all-or-nothing:
 - **Ambient RNA (SoupX/DecontX) is not attemptable** — no unfiltered matrices
   exist for this dataset. Mitigated via an empirical antigen-positivity noise
   floor instead, not left uncorrected silently.
-- **MAD-based QC thresholds, re-derived per this cohort** — not a straight copy
-  of `sc-best-practices`'s tutorial numbers.
+- **MAD-based QC thresholds, re-derived per this cohort AND per cohort within it** —
+  not a straight copy of `sc-best-practices`'s tutorial numbers. Done, 2026-08-24; the
+  values are in `results/04_qc/qc_thresholds.csv` and summarised at stage 04 above.
+- **`pct_counts_in_top_20_genes` is computed and reported but never filters
+  (2026-08-24).** In myeloma marrow an Ig-dominated library is a plasma cell's normal
+  state, so a MAD cut on it deletes antigen-**positive** malignant cells (the flagged
+  decile is 21x enriched for `TNFRSF17`) and inflates the escape fraction. It stays as
+  an ambient-Ig handle for stage 08, which needs one because SoupX cannot run here.
+  Re-enabling it is one explicit argument to `flag_outliers`, for a sensitivity run.
+- **The deposit is pre-filtered, differently per cohort, and the WashU 10,000-UMI
+  ceiling is a real confounder (2026-08-24).** It censors a band enriched 20-70x for
+  `GPRC5D`, in 36 of 54 myeloma samples, biased toward the project's own hypothesis.
+  Not corrected at stage 04 (that would mean discarding 42% of MMRF); carried as a
+  covariate, with a truncate-all-at-10k sensitivity analysis owed at stage 08. The
+  earlier claim that their stated QC "was not applied" is **wrong and superseded** —
+  it was reasoned from a pooled average that hid the per-cohort structure.
+- **QC annotates, it does not delete.** Every stage-04 checkpoint holds every barcode
+  with `obs["keep"]` set. Filtering happens at stage 05. For a fraction-of-zeros
+  metric, "does this survive a different QC?" is a question that will be asked, and it
+  is only answerable if the filtered cells are still on disk.
 - **`scDblFinder` (R) via an isolated `rpy2` bridge in `env-qc`**, not a
   pure-Python doublet-detection swap.
 - **The gene-space join is on Ensembl ID, reconstructed and verified (2026-08-21).**
@@ -1908,21 +2081,35 @@ all-or-nothing:
   are named by function, not numbered — different rule for a library vs. a
   pipeline sequence, on purpose.
 
+- **The patient mapping is S1's, not the naive rule's (2026-08-24).** 41 patients over
+  53 in-cohort samples, reproducing the paper exactly. `25183` is retained but flagged
+  `in_paper_cohort == False`; `MMY83942` folds into `83942`. The parser asserts all
+  three counts, because this mapping is the denominator of the headline metric.
+- **The `_N` suffixes are serial disease-course timepoints (2026-08-24, from S1).**
+  Not fractions, sorts or replicates. The longitudinal arm is real.
+
 ## Open questions to resolve during implementation
 
-- **Patient mapping is unresolved** — 47 vs. 41 patients, needs Supplementary
-  Table S1. Blocks stage 08's per-patient aggregation specifically. See the S1
-  policy above: proceed provisionally, label provisional output as such.
+- ~~**Patient mapping is unresolved**~~ — **CLOSED 2026-08-24 by S1.** 41 patients /
+  53 samples; see the Data section. Note S1 carries **no cytogenetics**, so the
+  disease-stage/karyotype annotation this list also wanted is only half-delivered:
+  stage and ISS yes, t(4;14)/1q21 no.
 - Whether any samples have paired scVDJ-seq for a stronger malignant-cell call
   than the kappa/lambda proxy — check GEO supplementary files.
 - Disease stage (NDMM/RRMM/normal) and cytogenetic risk annotation per sample —
   also needs Supplementary Table S1.
-- Exact MAD thresholds and the derived ambient-noise-floor antigen cutoff — both
-  need to be computed against the real cohort and documented with their values.
-- **What the `_N` sample suffixes actually mean** (timepoint vs. fraction vs. sort
-  vs. replicate). Gates the longitudinal arm. The bulk/sc suffix misalignment
-  (bulk `59114_2` vs. sc `59114_1`/`59114_4`) is evidence against the naive
-  timepoint reading — needs S1, do not assume.
+- ~~Exact MAD thresholds~~ — **computed and documented 2026-08-24**, per cohort, in
+  `results/04_qc/qc_thresholds.csv` and summarised at stage 04. The derived
+  ambient-noise-floor antigen cutoff is still open and belongs to stage 08.
+- ~~**What the `_N` sample suffixes actually mean**~~ — **CLOSED 2026-08-24 by S1.**
+  Serial disease-course timepoints (`27522_1` Primary -> `_6` Relapse-3). The earlier
+  bulk/sc misalignment argument was a red herring; it reflects incomplete bulk
+  coverage of a shared index. The longitudinal arm is unblocked.
+- **How to treat the WashU 10,000-UMI censoring in the headline metric.** Stage 08
+  owes a truncate-all-cohorts-at-10k sensitivity analysis. If the patient ordering
+  survives it, the metric is robust to the censoring; if it does not, WU1/WU2's
+  escape fractions are partly an artifact of what the depositors removed and the
+  framing must say so. This is not optional — the bias points toward the hypothesis.
 - **The minimum malignant-cell inclusion threshold** for stage 08 — ≥50 cells is a
   floor, not the answer (at n=50, one cell is 2%, so 1%/2%/3% escape are not
   separable). Re-derive it from the smallest DN fraction the project intends to call

@@ -1,0 +1,5 @@
+cohort,sample_type,chemistry,n_cells_pre,n_outlier_counts,n_outlier_genes,n_outlier_top20,n_outlier_mt,n_outlier_min_genes,n_doublet,n_kept,n_removed,pct_removed,median_genes_post,median_counts_post,median_pct_mt_post
+Donor,normal_bm,10x 3' v3.2,48150,2037,2179,2975,4640,0,4553,37271,10879,22.59397715472482,1074.0,3594.0,4.906272
+MMRF,myeloma,10x 3' v3.3,36814,0,0,6404,0,0,1738,35076,1738,4.721030042918455,1931.0,7120.5,5.876189
+WU1,myeloma,10x 3' v2,75182,0,293,11024,5926,0,4668,64596,10586,14.080497991540529,1067.0,3453.0,4.127855
+WU2,myeloma,10x 3' v3.2,43894,0,20,1506,5518,0,2597,35997,7897,17.991069394450268,1191.0,3267.0,5.4103346

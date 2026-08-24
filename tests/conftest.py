@@ -17,6 +17,8 @@ from __future__ import annotations
 import sys
 from pathlib import Path
 
+import importlib.util
+
 import pytest
 
 REPO_ROOT = Path(__file__).resolve().parents[1]
@@ -37,6 +39,19 @@ RAW_AVAILABLE = config.MANIFEST_CSV.exists() and config.SAMPLES_DIR.is_dir()
 requires_data = pytest.mark.skipif(
     not RAW_AVAILABLE,
     reason=f"needs the extracted deposit at {config.SAMPLES_DIR} (see notebooks/01)",
+)
+
+#: R lives only in `mm-qc` (scDblFinder) and `mm-annotation` (SingleR), on purpose —
+#: see CLAUDE.md's env split. The suite's home is `mm-core`, which carries no R at
+#: all, so R-backed tests skip there rather than failing.
+#:
+#: To actually exercise them you need pytest inside an R env. `pytest` is declared in
+#: `envs/env-qc.yml` but the currently-built `mm-qc` predates that line, so either
+#: rebuild it or rely on `notebooks/04_qc.ipynb`, which runs the bridge over all 62
+#: samples and is the stronger check anyway.
+requires_r = pytest.mark.skipif(
+    importlib.util.find_spec("anndata2ri") is None,
+    reason="needs the mm-qc environment (rpy2 + anndata2ri + scDblFinder)",
 )
 
 #: Supplementary Table S1 is a separate gate: it is a small xlsx from the journal, not

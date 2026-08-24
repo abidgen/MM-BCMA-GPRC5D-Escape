@@ -19,7 +19,8 @@ dependencies:
   - matplotlib
   - jupyterlab
   - ipykernel
-  - jupytext            # notebooks are paired .py/.ipynb; see CLAUDE.md
+  - jupytext
+  - pytest        # so tests/test_qc.py's R-backed cases can run in this env
   - r-base=4.3.3
   - rpy2=3.5.11
   - bioconductor-scdblfinder=1.16.0

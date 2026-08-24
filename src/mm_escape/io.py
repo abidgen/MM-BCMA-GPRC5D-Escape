@@ -100,6 +100,17 @@ _NORMAL_BM_RE = re.compile(r"^BM\d+$")
 #: the filename convention is the one thing that cannot go missing.
 _NORMAL_DONOR_RE = re.compile(r"^ND_\d+$")
 
+#: Sample-level columns copied onto every cell. Kept in one place because stage 04
+#: derives QC thresholds per `cohort`, stage 05 uses `cohort` as a Harmony covariate,
+#: and stages 08/12 group by `disease_phase` and `in_paper_cohort` — all of which need
+#: the column on the concatenated object, not just in the manifest. Stored as strings
+#: and categoricals so `anndata.concat` cannot silently coerce them to object.
+_PER_CELL_SAMPLE_COLUMNS = (
+    "cohort", "chemistry", "dead_cell_removal", "diagnosis",
+    "iss_stage", "disease_stage", "disease_phase", "timepoint",
+    "clinical_source", "in_paper_cohort",
+)
+
 #: The naive patient rule. Strips a trailing `_<digits>` ONLY when the stem is purely
 #: numeric: `27522_1` -> `27522`, but `MMRF_1695` stays whole (its stem is `MMRF`).
 _NUMERIC_SUFFIX_RE = re.compile(r"^(\d+)_(\d+)$")
@@ -675,7 +686,12 @@ def load_manifest(
         frame["disease_phase"] = frame["sample_name"].map(
             stage_by_sample["disease_phase"]
         )
-        frame["timepoint"] = frame["sample_name"].map(stage_by_sample["timepoint"])
+        # Int64, not float: the round-trip through the TSV makes it float64 (NaN for
+        # the cohorts S1 does not stage), and a per-cell label reading "6.0" is a
+        # small ugliness that would propagate through every groupby downstream.
+        frame["timepoint"] = (
+            frame["sample_name"].map(stage_by_sample["timepoint"]).astype("Int64")
+        )
         frame["clinical_source"] = np.where(
             frame["patient_id"].isin(clinical.index), "S1", "none"
         )
@@ -903,7 +919,7 @@ def read_sample(
             "sample_type_certain": bool(row["sample_type_certain"]),
             **{
                 column: str(row[column])
-                for column in ("cohort", "chemistry", "dead_cell_removal", "diagnosis")
+                for column in _PER_CELL_SAMPLE_COLUMNS
                 if column in row
             },
             "n_genes_ref": len(symbols),
@@ -913,8 +929,7 @@ def read_sample(
     )
     for column in (
         "sample_id", "gsm_id", "sample_name", "patient_id", "patient_id_source",
-        "sample_type", "n_genes_ref", "cohort", "chemistry", "dead_cell_removal",
-        "diagnosis",
+        "sample_type", "n_genes_ref", *_PER_CELL_SAMPLE_COLUMNS,
     ):
         if column in obs:
             obs[column] = obs[column].astype("category")

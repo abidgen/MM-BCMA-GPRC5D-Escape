@@ -1,6 +1,6 @@
 # RESUME HERE — MM Dual-Antigen pipeline (Python rebuild), session state
 
-**Last updated:** 2026-08-24
+**Last updated:** 2026-08-24 (S1 + stage 04)
 **Branch:** `main`, everything merged, no feature branches open, working tree clean.
 
 **To resume — three commands, then read on:**
@@ -9,7 +9,8 @@
 cd /media/wrath/CART_mm_dual_antigen
 git status --short                   # expect no output (clean tree)
 git branch                          # expect only `main`
-conda run -n mm-core pytest -q       # expect 89 passed, 1 skipped, ~7 s
+conda run -n mm-core pytest -q       # expect 117 passed, 2 skipped, ~9 s
+ls results/04_qc/samples | wc -l     # expect 62 (stage 04 checkpoints)
 ```
 
 If those are green the environment and data are intact and nothing needs rebuilding.
@@ -38,8 +39,21 @@ The four conda envs are built with kernels registered. `src/mm_escape/` holds
 The whole cohort — **62 samples, 204,040 pre-QC cells** — loads in ~2 s and harmonizes
 to 32,991 genes with all 65 required genes present.
 
-**>> The next artifact is `src/mm_escape/qc.py` + `notebooks/04_qc.ipynb`. <<**
-Nothing from stage 04's QC onward exists.
+**Stage 04 is now done too, and Supplementary Table S1 has landed.** 204,040 pre-QC
+cells -> **172,940 kept (84.8%)**, per-cohort MAD thresholds derived and documented,
+`scDblFinder` run on all 62 samples, one checkpoint per sample under
+`results/04_qc/samples/` with every barcode retained and `obs["keep"]` set. S1 closed
+the patient mapping: **41 patients over 53 in-cohort samples**, exactly the paper's
+numbers, and confirmed the `_N` suffixes are serial disease-course timepoints.
+
+**>> The next artifact is `src/mm_escape/integration.py` + `notebooks/05_integration_clustering.ipynb`. <<**
+Nothing from stage 05 onward exists.
+
+Stage 04 turned up two things that change stage 08 and are written up in `CLAUDE.md`:
+`pct_counts_in_top_20_genes` cannot be used as a filter here (it deletes
+antigen-positive plasma cells), and the deposit is pre-filtered differently per
+cohort, with a WashU 10,000-UMI ceiling that censors a band enriched 20-70x for
+`GPRC5D`. Read the stage-04 entry in `CLAUDE.md` before writing stage 08.
 
 Five real defects have surfaced so far, all fixed:
 1. Cross-reference HGNC symbol drift — solved properly via Ensembl-ID reconstruction
@@ -270,29 +284,33 @@ directory were removed. Everything is recoverable from the **`r-build-snapshot`*
    `pyproject.toml` added so `import mm_escape` works (`pip install -e . --no-deps`,
    done for `mm-qc` and `mm-core`; `mm-annotation`/`mm-communication` need it when
    stages 06 and 11 arrive). `tests/` added — 89 pass in `mm-core`.
-5. **>> START HERE << Write `src/mm_escape/qc.py`** and `notebooks/04_qc.ipynb` ->
-   `results/04_qc/`: QC metrics (including `pct_counts_in_top_20_genes`), MAD-based
-   outlier calling, `scDblFinder` via the `rpy2` bridge, checkpointing each sample's
-   post-QC AnnData individually so the stage is resumable.
+5. ~~**Write `src/mm_escape/qc.py`** and `notebooks/04_qc.ipynb`~~ — **DONE
+   2026-08-24.** Ran on all 62 samples: 204,040 -> 172,940 cells. Per-cohort MAD
+   thresholds, one-sided `pct_counts_mt`, `scDblFinder` over the rpy2 bridge,
+   per-sample checkpoints that keep every barcode. `tests/test_qc.py` adds 23 tests,
+   most of them data-free. See "2026-08-24 — S1 lands, stage 04 runs" below for the
+   two findings that came out of it.
 
-   Four things to get right, all settled and none of them open questions:
-   - **Derive MAD thresholds per cohort, not pooled.** The cohorts differ ~1.9x in
-     genes/cell (MMRF 1916, WU2 1210, Donor 1103, WU1 1023). A pooled MAD would flag
-     much of WashU cohort 1 as low-quality for a batch reason. `obs["cohort"]` is
-     already on every cell.
-   - **Start from 5 MADs but document the thresholds this cohort actually produces** —
-     `sc-best-practices`' numbers are for healthy PBMC/BMMC, not myeloma marrow. Same
-     for the `pct_counts_mt` cap; do not copy the 8%.
-   - **Do not inherit the depositors' QC.** Their stated Seurat filter (drop cells
-     >10,000 UMIs as multiplets) is internally garbled and demonstrably was not applied
-     to what is deposited — the cohort averages ~6,767 UMIs/cell with plenty above 10k.
-     These are Cell Ranger filtered matrices.
-   - **`56203_1` is loaded, not excluded** — `config.EXCLUDED_SAMPLES` is empty and the
-     gene file is repaired on read.
+6. **>> START HERE << Write `src/mm_escape/integration.py`** and
+   `notebooks/05_integration_clustering.ipynb` -> `results/05_integration/`, in
+   `mm-core`. It reads the stage-04 checkpoints.
 
-   Write the tests alongside, in `tests/test_qc.py`, following the two-tier split in
-   `tests/conftest.py` (threshold arithmetic needs no data; anything touching matrices
-   goes behind `requires_data`).
+   Five things to get right, all settled:
+   - **Filter to `obs["keep"]` HERE, not in stage 04.** The checkpoints hold every
+     barcode on purpose, so a later stage can ask what QC cost.
+   - **Gene-space work is already written and tested** — `gene_space.attach_ensembl_ids`
+     per sample (pre-concat, positional), then `intersect_gene_space` (IDs only),
+     then `to_canonical_symbols` once post-merge, then `assert_required_genes`.
+     Expect **32,991 genes**. `anndata.concat(join="inner")`, never outer.
+   - **Harmony keyed on `patient_id` with `n_genes_ref` AND `cohort` as covariates.**
+     Different axes; neither substitutes for the other.
+   - **`patient_id` is now the S1 mapping**, so the 8 donors and `25183` need a
+     deliberate decision (include in the embedding? exclude from patient-level
+     aggregates?) rather than falling out of a default.
+   - **The malignant compartment must not use the Harmony embedding.** Stage 10
+     depends on per-patient un-integrated subclustering. Say so in the notebook, and
+     say that per-cell antigen calls are raw counts and are integration-independent.
+
 6. Continue through stages 05-12 per `CLAUDE.md`'s pipeline section — notebook
    number N always writes to `results/N_*/`, nothing else. Run them in numeric
    order; number order is execution order.
@@ -718,16 +736,108 @@ control doubles as a build control.
 
 ---
 
+## 2026-08-24 — S1 lands, stage 04 runs
+
+Supplementary Tables S1-S6 appeared in `raw/`. Two pieces of work came out of it:
+S1 parsed and wired in, then stage 04 written and run end to end.
+
+### S1 closed the patient mapping, exactly
+
+The naive rule gave 43 patients over 54 deposited myeloma samples; the paper reports
+41 / 53. Two independent corrections close both gaps:
+
+- **`25183`** is deposited (scRNA *and* bulk) but appears in **no** supplementary
+  table. That is the whole 53-vs-54 gap. It is **not dropped** — `in_paper_cohort ==
+  False`, `clinical_source == "none"`, so an aggregate excludes it on purpose.
+- **`83942` and `MMY83942` are one patient** — S1 lists them separately but with
+  identical age/sex/race/ISS/treatment, sampled under both WashU protocols.
+
+`io._assert_s1_reproduces_the_paper` checks all three counts off the committed GEO
+table, so a revised S1 fails loudly rather than quietly moving the denominator of
+`frac_double_negative`.
+
+**The `_N` suffixes are serial disease-course timepoints.** S1 sheet 2:
+`27522_1` Primary -> `_2` Remission-1 -> `_3` Relapse-1 -> `_4` Relapse-2 ->
+`_5` Remission-2 -> `_6` Relapse-3. The longitudinal arm is real, not speculative.
+Coverage is **WashU cohort 1 only** — MMRF and WU2 get `disease_stage = NA` and one is
+not imputed. **S1 carries no cytogenetics at all**, so stage 10's TC proxy still has
+nothing in this deposit to validate against.
+
+New: `resources/sample_metadata/patients_clinical.tsv` (43 rows) and
+`sample_disease_stage.tsv` (22). `load_manifest` emits age/sex/race/iss_stage/
+treatment/ttpd_months/disease_stage/disease_phase/timepoint/clinical_source/
+in_paper_cohort, and every cell carries them.
+
+All six supplementary tables are committed (~500 KB). Table S3 and Table S5 (file
+`s6`) are useful later — see `CLAUDE.md`. Note file `s5` is strict-OOXML so
+`openpyxl` reports zero sheets for it; it is not corrupt.
+
+### Stage 04 ran, and found two things that change stage 08
+
+**204,040 -> 172,940 cells (84.8% kept)** over all 62 samples. Two passes: per sample
+(metrics + `scDblFinder`, ~210 s) then per cohort (MAD thresholds, ~11 s, computed off
+`obs` alone so the stage never concatenates the matrices).
+
+**1. `pct_counts_in_top_20_genes` cannot be used as a filter in this tissue.** A
+5-MAD band flags 17% of MMRF and 15% of WU1 against 3% of WU2. Those cells are two
+populations — `IGKC` at ~25% of counts (plasma cells) and `HBB`/`HBA1/2` at ~32%
+(erythroid debris) — and the plasma-cell half is the project's subject: `TNFRSF17`
+detected in **21.8%** of the flagged decile vs **0.8%** elsewhere. An Ig-dominated
+library is a plasma cell's normal state. Filtering on it deletes antigen-**positive**
+malignant cells and inflates the escape fraction. The flag is computed and reported
+(it is one of the few ambient-Ig handles available, since SoupX needs unfiltered
+matrices this deposit lacks) but is not in `qc.DEFAULT_FILTERS`.
+
+**2. The deposit is pre-filtered, differently per cohort — correcting an earlier
+claim in this file.** The note that the depositors' 10,000-UMI cut "was not applied"
+came from a cohort-wide average that pooled MMRF with WashU. Per cohort:
+
+    WU1, WU2   UMI < 10,000   UMI >= 1,000   pct_mt < 20%   genes >= 200
+    MMRF       uncensored     UMI >= 1,000   pct_mt < 10%   genes >= 200
+    Donor      uncensored     uncensored     pct_mt < 20%   genes >= 200
+
+The WashU ceiling is the consequential one. Malignant plasma cells are the
+highest-RNA-content cells in marrow, so measured in the uncensored cohorts the band
+above 10,000 UMIs is enriched **3-21x for `TNFRSF17`** and **20-70x for `GPRC5D`**.
+**36 of 54 myeloma samples had the antigen-positive tail of their own tumours removed
+before deposit**, inflating `frac_double_negative` for WU1/WU2 — biased toward the
+project's hypothesis, and unfixable. Not corrected at stage 04 (that would mean
+discarding 42% of MMRF's cells); **stage 08 owes a truncate-all-at-10k sensitivity
+analysis**.
+
+Thresholds produced (`results/04_qc/qc_thresholds.csv` has all of them):
+
+| cohort | log1p_total_counts MAD | pct_mt cap | % removed |
+|---|---|---|---|
+| MMRF | 0.94 (wide — removes doublets only) | 12.6% | 4.7% |
+| WU1 | 0.41 | 8.6% | 14.1% |
+| WU2 | 0.45 | 12.9% | 18.0% |
+| Donor | 0.37 | 11.7% | 22.6% |
+
+Stable from 4 to 6 MADs (16.5% -> 14.6% overall), so nothing hangs on the exact count.
+
+### Test suite
+
+**117 passed, 2 skipped in `mm-core`** (was 89/1); **70 passed, 49 skipped on a fresh
+clone with no `raw/`** (was 51/39). Two new gates in `conftest.py`: `requires_s1`
+(the xlsx is a journal file, not part of the GEO deposit) and `requires_r`
+(scDblFinder lives only in `mm-qc`, and `mm-core` carries no R). `pytest` was added to
+`envs/env-qc.yml`, but the currently-built `mm-qc` predates that line — the bridge is
+exercised by `notebooks/04_qc.ipynb` over all 62 samples, which is the stronger check
+anyway.
+
+---
+
 ## Status
 
-Stages 01-03 complete and green; stage 04's loader done and validated. Envs built, kernels registered, gene space solved and
-committed. Architecture stable — the third review round hit wording and interpretation
-rather than method, which is the signal the plan is ready to implement against.
+Stages 01-04 complete and green. Envs built, kernels registered, gene space solved and
+committed, S1 parsed, QC run on the full cohort. Architecture stable.
 
-**Next artifact: `src/mm_escape/io.py`.** Validate on `MMRF_1695` (33538 build),
-`27522_1` (33694 build) and `BM4` (normal-BM control) before scaling to all 61 — those
-three cover the failure modes. It is also the first genuine integration test of
-`gene_space.py`, which has never touched a real count matrix.
+**Next artifact: `src/mm_escape/integration.py` + `notebooks/05_integration_clustering.ipynb`.**
+It reads the stage-04 checkpoints, filters to `obs["keep"]`, runs the (already written
+and tested) gene-space intersection to 32,991 genes, then Harmony on `patient_id` with
+`n_genes_ref` and `cohort` as covariates. First presentable state is still stages
+04-08: escape fractions with co-escape enrichment.
 
 This file will keep growing the way the R build's did — exact numbers, bugs found and
 fixed, open decisions — as each stage actually runs.
