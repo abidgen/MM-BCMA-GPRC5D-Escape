@@ -478,9 +478,83 @@ independence the co-escape test exists to interrogate. Consequences:
 
 ---
 
+## 2026-08-24 — `src/mm_escape/io.py` written and validated on the real data
+
+Merged `review3-stage08-corrections` into `main` (fast-forward), then built the loader.
+
+### What it does
+
+`load_manifest()` -> `read_sample()` / `read_samples()`. The manifest's column schema
+(from `scripts/03_build_manifest.py`) is the contract; the loader never auto-detects a
+10x directory, because `read_10x_mtx()` hardcodes filenames this deposit does not use.
+`load_manifest` also resolves the manifest's repo-root-relative paths to absolute,
+checks they exist up front, and adds `gsm_id`, `sample_name`, `patient_id`,
+`patient_id_source`, `sample_type`, `sample_type_certain`, `excluded`.
+
+`read_sample` returns cells x genes, CSR float32, `var_names` = the **deposited symbols
+in deposited order, untouched** (that is `attach_ensembl_ids`'s precondition),
+`obs_names` = `<sample_name>_<barcode>` (raw barcodes repeat across samples), and
+`n_genes_ref` in `.obs` so it survives concat and can be Harmony's covariate at stage 05.
+
+### Validated against the real files, not just imported
+
+Three samples covering the failure modes — `MMRF_1695` (33538), `27522_1` (33694),
+`BM4` (normal-BM control):
+
+- **The transpose.** The `.mtx` is genes x cells (`33538 1007 2604146`); AnnData is
+  cells x genes. Checked by re-reading raw triplets and asserting
+  `X[cell-1, gene-1] == count`, plus exact equality of total counts (13,357,462) and
+  nnz (2,604,146). A transposed object still looks plausible, so this is asserted, not
+  eyeballed.
+- **The io -> gene_space handoff** (the point of the exercise — `gene_space.py` had
+  never touched a real count matrix): `attach_ensembl_ids` accepted all three
+  position-for-position, `intersect_gene_space` gave **32,991** genes as predicted,
+  `to_canonical_symbols` + `assert_required_genes` passed with all 65 required genes
+  and 11,140 drifted symbols correctly joined (`NSD2` in 33538 = `WHSC1` in 33694).
+- **Failure paths raise**: excluded sample by name and by row, unknown sample,
+  a non-GSM `sample_id`, an unknown name in `read_samples`, and — via `gene_space` —
+  a reordered gene axis.
+- **Scale**: all 61 retained samples load in ~4 s. **202,203 pre-QC cells**
+  (154,053 disease / 48,150 normal-BM); 509 / 2,767 / 9,328 min/median/max cells per
+  sample, an **18.3x** spread. (The R build's 480 / 2,555 / 7,937 ~15x figures in
+  CLAUDE.md are *post*-QC — different quantity, both correct.)
+
+### Real finding: the 47-vs-41 patient gap is mostly the `ND_*` samples
+
+The inherited "naive rule yields 47 patients from 57 disease samples vs. the paper's
+41 / 53" counts the four `ND_*` samples as **disease**. CLAUDE.md itself treats them as
+controls in two other places, including stage 07's negative control. Counting them
+consistently as controls (and excluding `56203_1`):
+
+| | samples | naive patients |
+|---|---|---|
+| `ND_*` as disease (inherited) | 57 | 47 |
+| **`ND_*` as controls** | **53** | **43** |
+
+53 is the paper's disease-sample count exactly, and 43 is **two** collapses short of 41
+rather than six — `83942`/`MMY83942` being the obvious remaining pair. The four names
+(`ND_083017`, `ND_090617`, `ND_170531`, `ND_170607`) carry collection **dates**, not
+patient IDs, which is weak independent support.
+
+**Not resolved — a hypothesis.** `ND` could read "newly diagnosed"; the deposit does not
+say; and the 53 also leans on dropping `56203_1`, which the paper had no reason to drop
+for our BCMA-reference reason. So `io.py` encodes the uncertainty in the data rather
+than in a comment: `sample_type == "normal_bm"` with `sample_type_certain == False`.
+S1 still settles it, and `patient_id_source == "naive"` still rides on every cell.
+
+### Next artifact: `src/mm_escape/qc.py` + `notebooks/04_qc.ipynb`
+
+MAD-based outlier calling (5 MADs on `log1p_total_counts`,
+`log1p_n_genes_by_counts`, `pct_counts_in_top_20_genes`, plus a cohort-derived
+`pct_counts_mt` cap — **re-derive, do not copy the tutorial's 8%**), then `scDblFinder`
+over the `rpy2` bridge in `mm-qc`, checkpointing each sample's post-QC AnnData
+individually. The loader underneath it is done and green.
+
+---
+
 ## Status
 
-Stages 01-03 complete and green. Envs built, kernels registered, gene space solved and
+Stages 01-03 complete and green; stage 04's loader done and validated. Envs built, kernels registered, gene space solved and
 committed. Architecture stable — the third review round hit wording and interpretation
 rather than method, which is the signal the plan is ready to implement against.
 

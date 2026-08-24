@@ -13,7 +13,7 @@ conda environments. Importing the package must not require every environment at 
 
 __version__ = "0.1.0"
 
-__all__ = ["config", "gene_space"]
+__all__ = ["config", "gene_space", "io"]
 
 
 def __getattr__(name: str):

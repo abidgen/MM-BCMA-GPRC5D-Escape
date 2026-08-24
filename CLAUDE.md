@@ -396,6 +396,31 @@ are being missed (`83942`/`MMY83942` is a likely pair). **This must be resolved
 against Supplementary Table S1 before any per-patient aggregation step** — not
 optional, and not yet done in either language's build.
 
+**The 47/57 above counts the four `ND_*` samples as disease, and most of the gap
+disappears if they are not (found 2026-08-24 while building `io.py`).** This document
+already treats `ND_*` as normal-BM controls in two places — the sample-naming note
+above ("`ND_######`, and `BM#` (likely normal bone marrow controls)") and stage 07's
+negative control, which runs the malignant caller on "`BM2`, `BM4`, `BM5`, `BM6` and
+the `ND_*` samples". Counting them consistently as controls:
+
+| | samples | naive patients |
+|---|---|---|
+| `ND_*` counted as disease (the inherited figure) | 57 | 47 |
+| **`ND_*` counted as controls** (+ `56203_1` excluded) | **53** | **43** |
+
+53 is the paper's disease-sample count **exactly**, and 43 is two collapses from its
+41 rather than six — with `83942`/`MMY83942` the one obvious remaining pair. The four
+names are `ND_083017`, `ND_090617`, `ND_170531`, `ND_170607`: the suffixes are
+collection **dates** (MMDDYY / YYMMDD), not patient identifiers, which is how donor
+samples are usually labelled and is weak independent support.
+
+**This is a hypothesis, not a resolution — `ND` could also read "newly diagnosed",
+and the deposit does not say.** S1 settles it. `io.py` therefore classifies `ND_*` as
+`sample_type == "normal_bm"` with `sample_type_certain == False`, so the uncertainty
+is carried in the data rather than in a comment. Note the 53 also depends on dropping
+`56203_1`, which the paper had no reason to exclude for *our* BCMA-reference reason —
+so the exact sample-count match is suggestive, not proof.
+
 **Ambient RNA correction (SoupX/DecontX) is not possible for this dataset.** Both
 require the *unfiltered* Cell Ranger matrix (including empty droplets) to estimate
 the background contamination profile; GEO only hosts the *filtered* per-sample
@@ -1487,21 +1512,32 @@ The final stage; consumes the output of everything upstream. Assembles:
 
 ## Status / immediate next step
 
-**Stages 01-03 are run and verified; nothing from stage 04 onward exists yet.** The
-working tree is clean (R build removed, preserved under `r-build-snapshot`), `raw/` is
-intact at 62 samples, `scripts/01-03` are in place and confirmed (62/62 `triplet-ok`),
-and `notebooks/03_build_manifest.py` exists. `src/mm_escape/` and `envs/` are still
-unscaffolded. See `RESUME_HERE.md` for exact session state as work
-proceeds.
+**Stages 01-03 are run and verified. Stage 04's loader exists; its QC does not yet.**
+The working tree is clean (R build removed, preserved under `r-build-snapshot`), `raw/`
+is intact at 62 samples, `scripts/01-03` are confirmed (62/62 `triplet-ok`), notebooks
+01-03 are written and executed, the four `envs/*.yml` are built with kernels
+registered, and `src/mm_escape/` holds `config.py`, `gene_space.py` and `io.py`. See
+`RESUME_HERE.md` for exact session state as work proceeds.
+
+**`io.py` is written and validated against the real files (2026-08-24).** All 61
+retained samples load in ~4 s; the three-sample failure-mode set (`MMRF_1695` = 33538
+build, `27522_1` = 33694 build, `BM4` = normal-BM control) round-trips through
+`gene_space.py` to 32,991 genes with all 65 required genes present. Verified: the
+genes x cells -> cells x genes transpose (against random raw `.mtx` triplets plus exact
+total-count and nnz equality), deposited gene order preserved untouched for
+`attach_ensembl_ids`'s positional join, `<sample_name>_<barcode>` obs_names unique
+across the concat, and five failure paths raising. Cohort **pre-QC** totals: 202,203
+cells over 61 samples (154,053 disease / 48,150 normal-BM), 509 / 2,767 / 9,328
+min/median/max cells per sample (18.3x spread).
 
 First actions, in order:
-1. Re-run `scripts/01-03` (unchanged) and confirm `raw/sample_manifest.csv` still
-   comes out clean (62 samples, no INCOMPLETE entries) — should be a no-op
-   confirmation, not new debugging.
-2. Scaffold `src/mm_escape/` and the four `envs/*.yml` files.
-3. Build `env-qc`, register its kernel, start `notebooks/04_qc.ipynb` against
-   `src/mm_escape/io.py` + `qc.py` — validate the loader against 2-3 real sample
-   directories before scaling to all 61.
+1. Write `src/mm_escape/qc.py` (MAD outlier calling + the `scDblFinder` rpy2 bridge)
+   and `notebooks/04_qc.ipynb` against it, in `mm-qc`. The loader it builds on is
+   done — do not re-litigate `io.py`.
+2. Re-derive the MAD thresholds and the `pct_counts_mt` cap against THIS cohort's
+   distributions; do not copy `sc-best-practices`'s PBMC/BMMC demo numbers.
+3. Checkpoint each sample's post-QC AnnData individually (resumable per sample), then
+   stage 05 does the gene-space intersection on those checkpoints.
 
 ### Supplementary Table S1 policy (decided 2026-08-20)
 
