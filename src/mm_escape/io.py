@@ -30,13 +30,18 @@ AnnData is cells x genes, so the matrix is transposed on read. Getting this back
 produces an object that still looks plausible, which is why the dimensions are checked
 against the two .tsv line counts rather than trusted.
 
-PROVISIONAL PATIENT MAPPING
----------------------------
-`patient_id` here is the naive rule (strip a trailing `_<digits>` only when the stem
-is purely numeric), NOT the real mapping — that needs Supplementary Table S1, which is
-still unresolved. Every object carries `obs["patient_id_source"] == "naive"` so a
-provisional aggregate can never be mistaken for a final one, and so the switch to S1
-is a one-line change with a visible marker. See the S1 policy in CLAUDE.md.
+PATIENT MAPPING — RESOLVED 2026-08-24 BY SUPPLEMENTARY TABLE S1
+--------------------------------------------------------------
+`patient_id` is now the S1-resolved mapping, and `obs["patient_id_source"]` reads
+`"S1"` rather than `"naive"`. It is the naive rule (strip a trailing `_<digits>` only
+when the stem is purely numeric) plus one alias — `MMY83942` is the same patient as
+`83942` — and one sample, `25183`, that S1 does not list at all. Those two facts take
+the deposit's 54 samples / 43 naive patients to the paper's 53 / 41, exactly; the
+parser asserts both numbers. See `rebuild_clinical_metadata_from_s1`.
+
+`naive_patient_id` is kept and still exported: it is what the assertion compares
+against, and `patient_id_source` stays on every object so an aggregate built before
+this change is still identifiable.
 """
 
 from __future__ import annotations
@@ -57,7 +62,10 @@ from . import config
 __all__ = [
     "load_manifest",
     "load_sample_metadata",
+    "load_clinical_metadata",
     "rebuild_sample_metadata_from_soft",
+    "rebuild_clinical_metadata_from_s1",
+    "s1_patient_id",
     "parse_sample_name",
     "naive_patient_id",
     "classify_sample",
@@ -311,6 +319,239 @@ def load_sample_metadata(assay: str = "scrna", directory: Path | None = None) ->
 
 
 # ---------------------------------------------------------------------------
+# Supplementary Table S1 — the clinical metadata, and the real patient mapping
+# ---------------------------------------------------------------------------
+
+#: S1 writes cohorts out longhand; the rest of the project uses the GEO vocabulary.
+_S1_COHORT = {
+    "WASHU Cohort 1": "WU1",
+    "WASHU Cohort 2": "WU2",
+    "MMRF Immune Atlas Pilot Study Cohort": "MMRF",
+}
+
+#: The disease-stage sheet spells a per-patient serial course: `Primary`, `SMM`, and
+#: numbered `Relapse-N`/`Remission-N`. Collapsed to a coarse phase because n is small
+#: and the numbered levels are per patient, not comparable across them.
+_DISEASE_PHASE = {
+    "SMM": "smoldering",
+    "Primary": "newly_diagnosed",
+    "Relapse": "relapsed",
+    "Remission": "remission",
+}
+
+
+def s1_patient_id(sample_name: str) -> str:
+    """The canonical patient id for a sample name, S1 aliases applied.
+
+    `naive_patient_id` plus `config.PATIENT_ALIASES`. The only alias is
+    `MMY83942` -> `83942`; see the constant for the evidence and the arithmetic.
+    """
+    naive = naive_patient_id(sample_name)
+    return config.PATIENT_ALIASES.get(naive, naive)
+
+
+def _s1_sheet(xlsx_path: Path, sheet: str) -> pd.DataFrame:
+    try:
+        return pd.read_excel(xlsx_path, sheet_name=sheet, header=None)
+    except Exception as error:  # openpyxl raises several unrelated types
+        raise SampleLoadError(
+            f"Could not read sheet {sheet!r} from {xlsx_path}: {error}"
+        ) from error
+
+
+def rebuild_clinical_metadata_from_s1(
+    xlsx_path: Path | None = None,
+    directory: Path | None = None,
+    *,
+    write: bool = True,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Parse Supplementary Table S1 into the two committed clinical tables.
+
+    Returns `(patients, sample_stages)` and, unless `write=False`, commits them to
+    `resources/sample_metadata/patients_clinical.tsv` and `sample_disease_stage.tsv`
+    — same pattern as the GEO tables, so `raw/` staying gitignored costs nothing.
+
+    WHAT S1 SETTLES
+    ---------------
+    Two things that had been open since the project started:
+
+    1. **The patient mapping.** The naive rule gives 43 patients over 54 deposited
+       myeloma samples; the paper reports 41 over 53. Both gaps close here and
+       exactly: `25183` is deposited but appears in no supplementary table
+       (`config.SAMPLES_WITHOUT_CLINICAL`), and `83942`/`MMY83942` are one patient
+       sampled under both WashU protocols (`config.PATIENT_ALIASES`). 54 - 1 = 53
+       samples; 43 - 1 - 1 = 41 patients. The function asserts both numbers.
+
+    2. **What the `_N` suffixes mean.** Sheet 2 reads `27522_1` Primary, `_2`
+       Remission-1, `_3` Relapse-1, `_4` Relapse-2, `_5` Remission-2, `_6`
+       Relapse-3. They are serial disease-course timepoints, which is what the
+       2026-08-24 bulk/scRNA suffix argument had inferred and this confirms
+       outright. The longitudinal arm in CLAUDE.md is real, not speculative.
+       It also explains the lone non-`_1` samples: `37692_2` and `57075_3` are later
+       timepoints whose earlier draws were simply not deposited.
+
+    COVERAGE, STATED PLAINLY
+    ------------------------
+    Sheet 2 covers **WashU cohort 1 only**. MMRF and WashU cohort 2 samples get
+    `disease_stage = NA` — S1 gives them treatment and time-to-progression but no
+    stage label. Do not impute one; `newly_diagnosed` is a guess for those cohorts,
+    not a datum.
+    """
+    xlsx_path = Path(xlsx_path) if xlsx_path is not None else config.S1_XLSX
+    if not xlsx_path.exists():
+        raise SampleLoadError(
+            f"Supplementary Table S1 not found at {xlsx_path}. It is not in git "
+            f"(raw/ is gitignored); download it from the Cancer Research page for "
+            f"CAN-22-1769 as can-22-1769_table_s1_suppst1.xlsx."
+        )
+
+    # --- sheet 1: per-patient clinical characteristics -----------------------
+    raw = _s1_sheet(xlsx_path, "summary")
+    # Row 0 is the table title, row 1 the header, rows 2+ the data. Column 0 names the
+    # cohort on its first patient only, so it is forward-filled.
+    body = raw.iloc[2:, :8].copy()
+    body.columns = [
+        "s1_cohort", "patient_id", "age", "sex", "race",
+        "iss_stage", "treatment", "ttpd_months",
+    ]
+    body["s1_cohort"] = body["s1_cohort"].ffill()
+    body = body.loc[body["patient_id"].notna()].reset_index(drop=True)
+
+    unknown_cohorts = sorted(set(body["s1_cohort"]) - set(_S1_COHORT))
+    if unknown_cohorts:
+        raise SampleLoadError(
+            f"S1 sheet 'summary' names cohort(s) this parser does not know: "
+            f"{unknown_cohorts}. Extend _S1_COHORT rather than guessing."
+        )
+    body["cohort"] = body["s1_cohort"].map(_S1_COHORT)
+    body["patient_id"] = body["patient_id"].astype(str).str.strip()
+
+    # ISS is 1/2/3 or the literal "UNK"; keep it as a string so "UNK" is not coerced
+    # to NaN and silently read as missing-at-random.
+    body["iss_stage"] = body["iss_stage"].astype(str).str.strip().replace(
+        {"nan": "UNK", "": "UNK"}
+    )
+    body["ttpd_months"] = pd.to_numeric(body["ttpd_months"], errors="coerce")
+    body["age"] = pd.to_numeric(body["age"], errors="coerce").astype("Int64")
+    body["treatment"] = body["treatment"].fillna("Unknown").astype(str).str.strip()
+
+    # Fold the alias BEFORE the count assertion — that collapse is the point.
+    body["s1_listed_as"] = body["patient_id"]
+    body["patient_id"] = body["patient_id"].map(
+        lambda pid: config.PATIENT_ALIASES.get(pid, pid)
+    )
+    aliased = sorted(set(body["s1_listed_as"]) & set(config.PATIENT_ALIASES))
+    # Two rows now share a patient_id. Keep the first (the cohort-1 row) and record
+    # that the patient spans two cohorts rather than dropping the fact.
+    spans = body.groupby("patient_id")["cohort"].apply(lambda c: "+".join(sorted(set(c))))
+    patients = body.drop_duplicates("patient_id", keep="first").set_index("patient_id")
+    patients["cohorts_sampled"] = spans
+    patients = patients.reset_index()
+
+    # --- sheet 2: per-sample disease stage (WashU cohort 1 only) -------------
+    stage_raw = _s1_sheet(xlsx_path, "WashU cohort1 stage info")
+    stages = stage_raw.iloc[1:, :2].copy()
+    stages.columns = ["sample_name", "disease_stage"]
+    stages = stages.loc[stages["sample_name"].notna()].reset_index(drop=True)
+    stages["sample_name"] = stages["sample_name"].astype(str).str.strip()
+    stages["disease_stage"] = stages["disease_stage"].astype(str).str.strip()
+    # `Relapse-2` -> `relapsed`; `Primary` -> `newly_diagnosed`; `SMM` -> `smoldering`.
+    stages["disease_phase"] = (
+        stages["disease_stage"].str.split("-").str[0].map(_DISEASE_PHASE)
+    )
+    unmapped = sorted(set(stages.loc[stages["disease_phase"].isna(), "disease_stage"]))
+    if unmapped:
+        raise SampleLoadError(
+            f"S1 disease stages this parser cannot phase: {unmapped}. "
+            f"Extend _DISEASE_PHASE rather than dropping them."
+        )
+    stages["patient_id"] = stages["sample_name"].map(s1_patient_id)
+    # Timepoint index straight off the deposited suffix; NA for unsuffixed samples.
+    stages["timepoint"] = (
+        stages["sample_name"].str.extract(r"_(\d+)$")[0].astype("Int64")
+    )
+
+    _assert_s1_reproduces_the_paper(patients, aliased)
+
+    if write:
+        directory = directory or config.SAMPLE_METADATA_DIR
+        directory.mkdir(parents=True, exist_ok=True)
+        patients.to_csv(directory / "patients_clinical.tsv", sep="\t", index=False)
+        stages.to_csv(directory / "sample_disease_stage.tsv", sep="\t", index=False)
+
+    return patients, stages
+
+
+def _assert_s1_reproduces_the_paper(
+    patients: pd.DataFrame, aliased: list[str]
+) -> None:
+    """Check the S1 parse against the deposit and the paper's stated counts.
+
+    This is the same self-certifying discipline as the gene-space reconstruction: the
+    mapping is only trustworthy because getting it wrong changes a number that is
+    checked here. It runs off the committed GEO metadata table, so it needs no `raw/`
+    matrices.
+    """
+    if not aliased:
+        raise SampleLoadError(
+            f"Expected S1 to list the aliased patient(s) "
+            f"{sorted(config.PATIENT_ALIASES)}, but none appeared. Either S1 was "
+            f"revised or config.PATIENT_ALIASES is stale — do not proceed on a "
+            f"patient mapping that no longer matches its evidence."
+        )
+
+    meta = load_sample_metadata("scrna")
+    myeloma = meta.loc[meta["sample_type"] == "myeloma", "sample_name"]
+    if len(myeloma) != config.N_MYELOMA_SAMPLES_DEPOSITED:
+        raise SampleLoadError(
+            f"GEO metadata holds {len(myeloma)} myeloma samples, expected "
+            f"{config.N_MYELOMA_SAMPLES_DEPOSITED}."
+        )
+
+    in_paper = myeloma[~myeloma.isin(config.SAMPLES_WITHOUT_CLINICAL)]
+    if len(in_paper) != config.N_MYELOMA_SAMPLES_IN_PAPER:
+        raise SampleLoadError(
+            f"{len(in_paper)} myeloma samples carry clinical data, expected "
+            f"{config.N_MYELOMA_SAMPLES_IN_PAPER} (the paper's 53). "
+            f"config.SAMPLES_WITHOUT_CLINICAL may be stale."
+        )
+
+    resolved = {s1_patient_id(name) for name in in_paper}
+    if len(resolved) != config.N_PATIENTS_IN_PAPER:
+        raise SampleLoadError(
+            f"The S1 mapping yields {len(resolved)} patients over the deposited "
+            f"myeloma samples, expected {config.N_PATIENTS_IN_PAPER}. The mapping "
+            f"sets the denominator of frac_double_negative — fix it, do not proceed."
+        )
+
+    # Every deposited patient must have a clinical row, or the join below is partial.
+    missing = sorted(resolved - set(patients["patient_id"]))
+    if missing:
+        raise SampleLoadError(
+            f"{len(missing)} deposited patient(s) have no S1 clinical row: {missing}. "
+            f"Add them to config.SAMPLES_WITHOUT_CLINICAL only with evidence."
+        )
+
+
+def load_clinical_metadata(
+    directory: Path | None = None,
+) -> tuple[pd.DataFrame, pd.DataFrame]:
+    """Load the committed `(patients, sample_stages)` clinical tables from S1."""
+    directory = directory or config.SAMPLE_METADATA_DIR
+    paths = {
+        name: directory / f"{name}.tsv"
+        for name in ("patients_clinical", "sample_disease_stage")
+    }
+    absent = [str(p) for p in paths.values() if not p.exists()]
+    if absent:
+        raise SampleLoadError(
+            f"Missing clinical table(s) {absent}. Regenerate with "
+            f"rebuild_clinical_metadata_from_s1()."
+        )
+    return tuple(pd.read_csv(p, sep="\t") for p in paths.values())  # type: ignore[return-value]
+
+
+# ---------------------------------------------------------------------------
 # The manifest
 # ---------------------------------------------------------------------------
 
@@ -320,6 +561,7 @@ def load_manifest(
     drop_excluded: bool = True,
     require_complete: bool = True,
     with_metadata: bool = True,
+    with_clinical: bool = True,
 ) -> pd.DataFrame:
     """Load `raw/sample_manifest.csv` and add the metadata derivable from names.
 
@@ -327,12 +569,24 @@ def load_manifest(
     other machines), so they are resolved to absolute here and their existence is
     checked. Columns added on top of the script's schema:
 
-        gsm_id, sample_name, patient_id, patient_id_source,
+        gsm_id, sample_name, patient_id, patient_id_naive, patient_id_source,
         sample_type, sample_type_certain, excluded
 
-    and, from the committed GEO metadata table (`with_metadata`, the default):
+    from the committed GEO metadata table (`with_metadata`, the default):
 
         cohort, chemistry, dead_cell_removal, diagnosis
+
+    and from the committed Supplementary Table S1 tables (`with_clinical`, the
+    default):
+
+        age, sex, race, iss_stage, treatment, ttpd_months,
+        disease_stage, disease_phase, timepoint,
+        clinical_source, in_paper_cohort
+
+    `disease_stage`/`disease_phase`/`timepoint` are **WashU cohort 1 only** — S1
+    gives no stage label for MMRF or WashU cohort 2, and one is not imputed. Where
+    present they are serial timepoints (`27522_1` Primary -> `_6` Relapse-3), which
+    is what makes the longitudinal arm real rather than assumed.
 
     `cohort` is the one to watch. WashU cohort 1 ran 10x 3' v2 and everything else ran
     v3.2/v3.3, but the measured gap in genes detected per cell follows cohort rather
@@ -351,10 +605,11 @@ def load_manifest(
 
     NOTE on counts: 62 rows, of which **8 are normal-BM controls** (`BM2/4/5/6` plus
     the four `ND_*`) and **54 are myeloma** — confirmed against GEO, not inferred.
-    The 54 map to 43 provisional patients under `naive_patient_id`; the series summary
-    reports 53 samples / 41 patients, so two name collapses are still missing. An
-    earlier figure of "47 patients / 57 samples" counted the four donors as disease
-    and is superseded.
+    Under `s1_patient_id` the 54 resolve to **41 patients over 53 in-cohort samples**,
+    matching the paper: `25183` carries no S1 entry (`in_paper_cohort == False`, but
+    it is still loaded) and `MMY83942` folds into `83942`. The naive rule's 43 is
+    retained as `patient_id_naive` for comparison. An earlier figure of "47 patients /
+    57 samples" counted the four donors as disease and is superseded.
     """
     manifest_path = Path(path) if path is not None else config.MANIFEST_CSV
     if not manifest_path.exists():
@@ -378,8 +633,9 @@ def load_manifest(
     parsed = frame["sample_id"].map(parse_sample_name)
     frame["gsm_id"] = [gsm for gsm, _ in parsed]
     frame["sample_name"] = [name for _, name in parsed]
-    frame["patient_id"] = frame["sample_name"].map(naive_patient_id)
-    frame["patient_id_source"] = "naive"
+    frame["patient_id"] = frame["sample_name"].map(s1_patient_id)
+    frame["patient_id_source"] = "S1"
+    frame["patient_id_naive"] = frame["sample_name"].map(naive_patient_id)
 
     classified = frame["sample_name"].map(classify_sample)
     frame["sample_type"] = [t for t, _ in classified]
@@ -403,6 +659,29 @@ def load_manifest(
         # GEO overrides the filename guess, and settles it.
         frame["sample_type"] = joined["sample_type"].to_numpy()
         frame["sample_type_certain"] = True
+
+    # Clinical metadata from S1. Left-joined on the resolved patient id, so the 8
+    # donors and `25183` come through with NA rather than being dropped — the donors
+    # are stage 07's negative control and must survive every join in this module.
+    if with_clinical:
+        patients, stages = load_clinical_metadata()
+        clinical = patients.set_index("patient_id")
+        for column in ("age", "sex", "race", "iss_stage", "treatment", "ttpd_months"):
+            frame[column] = frame["patient_id"].map(clinical[column])
+        stage_by_sample = stages.set_index("sample_name")
+        frame["disease_stage"] = frame["sample_name"].map(
+            stage_by_sample["disease_stage"]
+        )
+        frame["disease_phase"] = frame["sample_name"].map(
+            stage_by_sample["disease_phase"]
+        )
+        frame["timepoint"] = frame["sample_name"].map(stage_by_sample["timepoint"])
+        frame["clinical_source"] = np.where(
+            frame["patient_id"].isin(clinical.index), "S1", "none"
+        )
+        frame["in_paper_cohort"] = (frame["sample_type"] == "myeloma") & ~frame[
+            "sample_name"
+        ].isin(config.SAMPLES_WITHOUT_CLINICAL)
 
     frame["excluded"] = frame["sample_name"].isin(config.EXCLUDED_SAMPLES)
 

@@ -42,6 +42,42 @@ SAMPLE_METADATA_DIR = Path(
 )
 
 # --------------------------------------------------------------------------
+# Supplementary Table S1 (clinical)
+# --------------------------------------------------------------------------
+
+#: The paper's Supplementary Table S1 (Cancer Research CAN-22-1769). Landed in the
+#: repo 2026-08-24 and closes the patient mapping that had blocked stage 08 — see
+#: `io.rebuild_clinical_metadata_from_s1`. Sheet 1 is per-patient clinical
+#: characteristics; sheet 2 is the per-sample disease stage for WashU cohort 1, which
+#: is what proves the `_N` suffixes are serial timepoints.
+S1_XLSX = RAW_DIR / "can-22-1769_table_s1_suppst1.xlsx"
+
+#: `83942` (WashU cohort 1) and `MMY83942` (WashU cohort 2) are listed by S1 as two
+#: patients but carry IDENTICAL age (63), gender (Male), race (White), ISS stage (3)
+#: and treatment (Unknown), and the shared numeric stem is not a coincidence. Treating
+#: them as one patient sampled under both cohort protocols is what makes the deposit
+#: reproduce the paper's own arithmetic exactly: 54 deposited MM samples minus
+#: `25183` (below) is 53, and 43 naive patients minus `25183` minus this collapse is
+#: 41 — the "53 bone marrow aspirates from 41 MM patients" the series summary states.
+#: Maps the S1/deposit name -> the canonical patient id.
+PATIENT_ALIASES: dict[str, str] = {"MMY83942": "83942"}
+
+#: `25183` is deposited (scRNA *and* bulk, WashU cohort 1) but appears in NO
+#: supplementary table — not the clinical summary, not the disease-stage sheet. It is
+#: the sample the paper's 53-vs-54 gap is made of. It is NOT dropped here: the data is
+#: real and stage 07's malignant caller can use it. It carries `clinical_source ==
+#: "none"` and `in_paper_cohort == False` so any per-patient aggregate can exclude it
+#: deliberately rather than by accident.
+SAMPLES_WITHOUT_CLINICAL: frozenset[str] = frozenset({"25183"})
+
+#: What the deposit must reproduce once S1 is applied. Asserted by the parser so a
+#: revised S1 or a changed deposit fails loudly instead of quietly moving the
+#: denominator of the headline metric.
+N_MYELOMA_SAMPLES_DEPOSITED = 54
+N_MYELOMA_SAMPLES_IN_PAPER = 53
+N_PATIENTS_IN_PAPER = 41
+
+# --------------------------------------------------------------------------
 # Sample exclusions
 # --------------------------------------------------------------------------
 

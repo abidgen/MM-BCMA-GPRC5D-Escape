@@ -27,6 +27,20 @@ raw/samples/
 raw/*_family.xml.tgz
 raw/*_series_matrix.txt.gz
 
+# The paper's supplementary tables (Cancer Research CAN-22-1769), ~500 KB in total
+# and committed for the same reason as the SOFT files: S1 is the input to
+# io.rebuild_clinical_metadata_from_s1, and the others are the paper's own numbers
+# that later stages are compared against. Which is which:
+#   s1  Table S1  clinical characteristics + WashU-1 disease stage   PARSED, used
+#   s2  Table S2  target novelty tiers / trial IDs for 37 antigens   stage 08/12 ref
+#   s3  Table S3  38x38 target correlation + co-exp / mut-excl pairs stage 08 ref
+#   s4  Table S4  NetMHC peptide-HLA binding                         not used here
+#   s5  Table S6  recurrent mutations (different MMRF samples)       not used here
+#   s6  Table S5  the paper's own bulk-vs-scRNA Pearson r per gene   stage 09 ref
+# Note the last two files are numbered off-by-one against their in-file titles, and
+# s5 is strict-OOXML so openpyxl reports zero sheets — it is not corrupt.
+!raw/can-22-1769_table_s*.xlsx
+
 # --- Large binary pipeline outputs, at any depth ------------------------------
 # AnnData / HDF5 checkpoints, the bulk of what stages 04-12 produce
 *.h5ad

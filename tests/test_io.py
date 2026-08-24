@@ -13,7 +13,7 @@ import pytest
 
 from mm_escape import config, gene_space, io
 
-from conftest import CANONICAL_SAMPLES, requires_data
+from conftest import CANONICAL_SAMPLES, requires_data, requires_s1
 
 
 # ---------------------------------------------------------------------------
@@ -203,13 +203,56 @@ def test_manifest_carries_the_geo_metadata(manifest):
 
 
 @requires_data
-def test_patient_ids_are_flagged_provisional_until_s1(manifest):
-    assert (manifest["patient_id_source"] == "naive").all()
+def test_patient_ids_are_resolved_by_s1(manifest):
+    """The mapping S1 closed: 54 deposited myeloma samples -> 41 patients / 53.
+
+    This replaced a test that asserted the mapping was still provisional. The two
+    corrections that close the gap are `25183` (deposited, in no supplementary
+    table) and `MMY83942` folding into `83942`.
+    """
+    assert (manifest["patient_id_source"] == "S1").all()
     myeloma = manifest.loc[manifest["sample_type"] == "myeloma"]
-    # 54 samples -> 43 naive patients, against the paper's 53 / 41.
-    assert myeloma["patient_id"].nunique() == 43
+    assert len(myeloma) == config.N_MYELOMA_SAMPLES_DEPOSITED
+
+    in_paper = myeloma.loc[myeloma["in_paper_cohort"]]
+    assert len(in_paper) == config.N_MYELOMA_SAMPLES_IN_PAPER
+    assert in_paper["patient_id"].nunique() == config.N_PATIENTS_IN_PAPER
+
+    # The naive rule is retained for comparison and still gives its old answer.
+    assert myeloma["patient_id_naive"].nunique() == 43
+
+    # The alias, and the sample that is deposited but not in the paper's cohort.
+    assert (manifest.loc[manifest["sample_name"] == "MMY83942",
+                         "patient_id"] == "83942").all()
+    assert not manifest.loc[manifest["sample_name"] == "25183",
+                            "in_paper_cohort"].any()
     assert (manifest.loc[manifest["sample_name"].str.startswith("27522"),
                          "patient_id"] == "27522").all()
+
+
+@requires_data
+def test_manifest_carries_the_s1_clinical_columns(manifest):
+    for column in ("age", "sex", "iss_stage", "treatment", "ttpd_months",
+                   "disease_stage", "disease_phase", "timepoint",
+                   "clinical_source", "in_paper_cohort"):
+        assert column in manifest
+
+    # Clinical data reaches exactly the paper's 53 samples; donors and 25183 get NA
+    # rather than being dropped — the donors are stage 07's negative control.
+    assert (manifest["clinical_source"] == "S1").sum() == \
+        config.N_MYELOMA_SAMPLES_IN_PAPER
+    assert manifest.loc[manifest["sample_type"] == "normal_bm",
+                        "clinical_source"].eq("none").all()
+
+    # Disease stage is WashU cohort 1 only, and is a serial course. Asserting the
+    # NA pattern stops a later join from silently imputing a stage for MMRF/WU2.
+    staged = manifest.loc[manifest["disease_stage"].notna()]
+    assert set(staged["cohort"]) == {"WU1"}
+    course = staged.set_index("sample_name")["disease_stage"]
+    assert course["27522_1"] == "Primary"
+    assert course["27522_6"] == "Relapse-3"
+    assert manifest.loc[manifest["sample_name"] == "27522_6",
+                        "disease_phase"].iat[0] == "relapsed"
 
 
 @requires_data
@@ -323,3 +366,72 @@ def test_read_samples_yields_in_manifest_order(manifest):
 def test_read_samples_rejects_an_unknown_name(manifest):
     with pytest.raises(io.SampleLoadError, match="Unknown sample"):
         list(io.read_samples(["ghost"], manifest=manifest, verbose=False))
+
+
+# ---------------------------------------------------------------------------
+# Supplementary Table S1 — the clinical tables (no raw/ needed)
+# ---------------------------------------------------------------------------
+
+def test_s1_patient_id_applies_the_alias_and_nothing_else():
+    assert io.s1_patient_id("MMY83942") == "83942"
+    assert io.s1_patient_id("83942") == "83942"
+    # Serial timepoints collapse; the MMRF stem does not.
+    assert io.s1_patient_id("27522_6") == "27522"
+    assert io.s1_patient_id("MMRF_1695") == "MMRF_1695"
+    # The alias is the ONLY departure from the naive rule.
+    for name in ("59114_4", "MMY18273", "BM4", "ND_083017"):
+        assert io.s1_patient_id(name) == io.naive_patient_id(name)
+
+
+def test_committed_clinical_tables_reproduce_the_papers_counts():
+    patients, stages = io.load_clinical_metadata()
+
+    # S1 lists 44 patients; the alias collapse makes 43 rows, of which two
+    # (47499, 98433) are bulk-only and have no scRNA sample.
+    assert len(patients) == 43
+    assert patients["patient_id"].is_unique
+    assert set(patients["cohort"]) == {"WU1", "WU2", "MMRF"}
+    assert not patients["patient_id"].str.startswith("MMY83942").any()
+
+    # The patient sampled under both WashU protocols is recorded as such.
+    spanning = patients.set_index("patient_id").loc["83942", "cohorts_sampled"]
+    assert spanning == "WU1+WU2"
+
+    # ISS "UNK" survives as a level rather than being coerced to missing.
+    assert "UNK" in set(patients["iss_stage"])
+
+    # Sheet 2 is WashU cohort 1 only: 22 of that cohort's 23 deposited samples
+    # (25183 is the one it omits, which is the whole 53-vs-54 gap).
+    assert len(stages) == 22
+    assert "25183" not in set(stages["sample_name"])
+
+
+def test_s1_disease_stages_are_a_serial_course():
+    """The `_N` suffixes are timepoints. This is what S1 settled outright."""
+    _, stages = io.load_clinical_metadata()
+    course = stages.set_index("sample_name")
+    assert list(course.loc[[f"27522_{i}" for i in range(1, 7)], "disease_stage"]) == [
+        "Primary", "Remission-1", "Relapse-1", "Relapse-2", "Remission-2", "Relapse-3",
+    ]
+    # The timepoint index tracks the suffix, and the lone non-_1 samples are later
+    # draws whose earlier ones were not deposited — not a fraction or replicate label.
+    assert course.loc["37692_2", "timepoint"] == 2
+    assert course.loc["57075_3", "disease_stage"] == "Relapse-1"
+    # A patient's course is monotone in the suffix.
+    p27522 = stages.loc[stages["patient_id"] == "27522", "timepoint"]
+    assert list(p27522) == sorted(p27522)
+
+
+@requires_s1
+def test_s1_parser_rejects_a_stale_alias_table(monkeypatch):
+    """The count assertions are the point — they must actually fire."""
+    monkeypatch.setattr(config, "PATIENT_ALIASES", {})
+    with pytest.raises(io.SampleLoadError, match="aliased patient"):
+        io.rebuild_clinical_metadata_from_s1(write=False)
+
+
+@requires_s1
+def test_s1_parser_rejects_a_wrong_patient_count(monkeypatch):
+    monkeypatch.setattr(config, "N_PATIENTS_IN_PAPER", 40)
+    with pytest.raises(io.SampleLoadError, match="denominator"):
+        io.rebuild_clinical_metadata_from_s1(write=False)

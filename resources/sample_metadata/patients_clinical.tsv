@@ -1,0 +1,44 @@
+patient_id	s1_cohort	age	sex	race	iss_stage	treatment	ttpd_months	cohort	s1_listed_as	cohorts_sampled
+59114	WASHU Cohort 1	49	Male	White	2	KRD x 4; ASCT; KRD maintenance	44.57	WU1	59114	WU1
+27522	WASHU Cohort 1	69	Male	White	2	KRD x 4; ASCT; IRD consolidation x 4 ; Ixa/Len maintenance	32.73	WU1	27522	WU1
+57075	WASHU Cohort 1	62	Female	White	2	VCD+Rituximab x 5; ASCT; VCD x 2	42.34	WU1	57075	WU1
+56203	WASHU Cohort 1	63	Female	White	3	VRD x 3; ASCT; Len maintenance	16.48	WU1	56203	WU1
+60359	WASHU Cohort 1	57	Male	White	1	VD x 3; ASCT; Len maintenance	33.85	WU1	60359	WU1
+81012	WASHU Cohort 1	59	Female	White	1	VRD x 4; ASCT; Len maintenance	26.45	WU1	81012	WU1
+58408	WASHU Cohort 1	53	Male	White	UNK	RVD+Daratumamab x 4; ASCT	7.73	WU1	58408	WU1
+37692	WASHU Cohort 1	68	Male	White	1	Unknown		WU1	37692	WU1
+47491	WASHU Cohort 1	68	Male	White	UNK	Unknown		WU1	47491	WU1
+77570	WASHU Cohort 1	66	Female	White	1	VRD-Daratumamab x 4; ASCT; VRD-Daratumamab x2; Dara/Len Maintenance	34.34	WU1	77570	WU1
+83942	WASHU Cohort 1	63	Male	White	3	Unknown		WU1	83942	WU1+WU2
+98433	WASHU Cohort 1	46	Male	White	UNK	Unknown		WU1	98433	WU1
+47499	WASHU Cohort 1	63	Male	White	1	VRD x 4; ASCT	8.49	WU1	47499	WU1
+MMY18273	WASHU Cohort 2	60	Female	Black or AA	3	VRD x 7	11.61	WU2	MMY18273	WU2
+MMY21940	WASHU Cohort 2	71	Female	White	2	Daratumumab x ?	5.79	WU2	MMY21940	WU2
+MMY22933	WASHU Cohort 2	62	Male	White	3	Dara-MPR x 1; VRD x 4; Len maintenance	10.89	WU2	MMY22933	WU2
+MMY34339	WASHU Cohort 2	65	Male	White	3	Unknown		WU2	MMY34339	WU2
+MMY34600	WASHU Cohort 2	74	Female	White	3	VRD x ?	1.97	WU2	MMY34600	WU2
+MMY40511	WASHU Cohort 2	65	Male	White	1	KRD x 3; ASCT; Ixa/Len maintenance	24.9	WU2	MMY40511	WU2
+MMY47218	WASHU Cohort 2	63	Male	White	3	KRD x 4; ASCT; KRD maintenance	10.89	WU2	MMY47218	WU2
+MMY67868	WASHU Cohort 2	58	Male	Black or AA	1	KRD x 4; Carf maintenance	7.5	WU2	MMY67868	WU2
+MMY70893	WASHU Cohort 2	59	Male	Black or AA	1	RVD x 4; ASCT; Len Main	13.22	WU2	MMY70893	WU2
+MMY74196	WASHU Cohort 2	73	Female	White	2	VD x 1; KRD x 3; RVD x 3	6.78	WU2	MMY74196	WU2
+MMY80649	WASHU Cohort 2	62	Male	White	1	KRD x 4; ASCT; Len main	12.96	WU2	MMY80649	WU2
+MMY98423	WASHU Cohort 2	68	Male	Hispanic	3	VRD x ?	0.95	WU2	MMY98423	WU2
+MMRF_1267	MMRF Immune Atlas Pilot Study Cohort	39	Female	White	2	combined bortezomib/IMIDs-based	183.0	MMRF	MMRF_1267	MMRF
+MMRF_1325	MMRF Immune Atlas Pilot Study Cohort	58	Male	non-White	3	combined bortezomib/IMIDs-based	144.0	MMRF	MMRF_1325	MMRF
+MMRF_1413	MMRF Immune Atlas Pilot Study Cohort	71	Female	White	3	Bortezomib-based		MMRF	MMRF_1413	MMRF
+MMRF_1424	MMRF Immune Atlas Pilot Study Cohort	40	Male	White	3	combined bortezomib/IMIDs-based	113.0	MMRF	MMRF_1424	MMRF
+MMRF_1505	MMRF Immune Atlas Pilot Study Cohort	62	Female	White	3	combined bortezomib/IMIDs-based	162.0	MMRF	MMRF_1505	MMRF
+MMRF_1537	MMRF Immune Atlas Pilot Study Cohort	62	Female	White	3	combined bortezomib/IMIDs-based		MMRF	MMRF_1537	MMRF
+MMRF_1640	MMRF Immune Atlas Pilot Study Cohort	71	Female	White	3	combined bortezomib/IMIDs-based		MMRF	MMRF_1640	MMRF
+MMRF_1641	MMRF Immune Atlas Pilot Study Cohort	70	Female	White	3	Bortezomib-based	90.0	MMRF	MMRF_1641	MMRF
+MMRF_1686	MMRF Immune Atlas Pilot Study Cohort	37	Male	White	1	Bortezomib-based		MMRF	MMRF_1686	MMRF
+MMRF_1695	MMRF Immune Atlas Pilot Study Cohort	61	Female	White	3	combined bortezomib/IMIDs-based		MMRF	MMRF_1695	MMRF
+MMRF_1720	MMRF Immune Atlas Pilot Study Cohort	83	Female	White	3	Bortezomib-based	64.0	MMRF	MMRF_1720	MMRF
+MMRF_1777	MMRF Immune Atlas Pilot Study Cohort	67	Male	White	1	Bortezomib-based	162.0	MMRF	MMRF_1777	MMRF
+MMRF_1941	MMRF Immune Atlas Pilot Study Cohort	58	Female	White	2	combined bortezomib/IMIDs-based		MMRF	MMRF_1941	MMRF
+MMRF_1967	MMRF Immune Atlas Pilot Study Cohort	74	Female	White	2	combined bortezomib/IMIDs-based		MMRF	MMRF_1967	MMRF
+MMRF_2038	MMRF Immune Atlas Pilot Study Cohort	37	Male	White	3	combined bortezomib/IMIDs-based		MMRF	MMRF_2038	MMRF
+MMRF_2168	MMRF Immune Atlas Pilot Study Cohort	50	Female	non-White	1	combined bortezomib/IMIDs-based		MMRF	MMRF_2168	MMRF
+MMRF_2251	MMRF Immune Atlas Pilot Study Cohort	47	Male	White	3	Bortezomib-based	104.0	MMRF	MMRF_2251	MMRF
+MMRF_2259	MMRF Immune Atlas Pilot Study Cohort	50	Male	non-White	3	combined bortezomib/IMIDs-based	123.0	MMRF	MMRF_2259	MMRF

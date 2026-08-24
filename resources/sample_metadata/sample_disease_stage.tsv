@@ -1,0 +1,23 @@
+sample_name	disease_stage	disease_phase	patient_id	timepoint
+27522_1	Primary	newly_diagnosed	27522	1
+27522_2	Remission-1	remission	27522	2
+27522_3	Relapse-1	relapsed	27522	3
+27522_4	Relapse-2	relapsed	27522	4
+27522_5	Remission-2	remission	27522	5
+27522_6	Relapse-3	relapsed	27522	6
+37692_2	Primary	newly_diagnosed	37692	2
+47491_1	SMM	smoldering	47491	1
+47491_2	Primary	newly_diagnosed	47491	2
+56203_1	Primary	newly_diagnosed	56203	1
+56203_2	Relapse-1	relapsed	56203	2
+57075_3	Relapse-1	relapsed	57075	3
+58408_1	SMM	smoldering	58408	1
+58408_2	Primary	newly_diagnosed	58408	2
+59114_1	Primary	newly_diagnosed	59114	1
+59114_4	Relapse-1	relapsed	59114	4
+60359_1	Primary	newly_diagnosed	60359	1
+60359_2	Relapse-1	relapsed	60359	2
+77570	Primary	newly_diagnosed	77570	
+81012_1	Primary	newly_diagnosed	81012	1
+81012_2	Relapse-1	relapsed	81012	2
+83942	Primary	newly_diagnosed	83942	

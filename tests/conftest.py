@@ -39,6 +39,14 @@ requires_data = pytest.mark.skipif(
     reason=f"needs the extracted deposit at {config.SAMPLES_DIR} (see notebooks/01)",
 )
 
+#: Supplementary Table S1 is a separate gate: it is a small xlsx from the journal, not
+#: part of the GEO deposit, so `raw/` can be present without it. The *parsed* tables
+#: are committed under `resources/`, so only tests that re-run the parser need this.
+requires_s1 = pytest.mark.skipif(
+    not config.S1_XLSX.exists(),
+    reason=f"needs Supplementary Table S1 at {config.S1_XLSX}",
+)
+
 
 @pytest.fixture(scope="session")
 def manifest():
