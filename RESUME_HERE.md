@@ -9,7 +9,7 @@
 cd /media/wrath/CART_mm_dual_antigen
 git status --short                   # expect no output (clean tree)
 git branch                          # expect only `main`
-conda run -n mm-core pytest -q       # expect 129 passed, 2 skipped, ~14 s
+conda run -n mm-core pytest -q       # expect 131 passed, 2 skipped, ~24 s
 ls results/04_qc/samples | wc -l     # expect 62 (stage 04 checkpoints)
 ls -la results/05_integration/integrated.h5ad   # expect ~1.3 GB
 ```
@@ -876,6 +876,30 @@ comparison of malignant-cell state off this embedding.** And the
 truncate-all-at-10,000 sensitivity analysis stage 08 owes is now owed twice — two
 independent signs of one problem.
 
+### Preprocessing diagnostics added, and they paid for themselves
+
+Prompted by "don't we need normalization, feature selection and dim reduction?" — all
+three had run (inside `normalize_and_hvg` and `run_pca_harmony`) but **none was
+reported**: the notebook had one line printing an HVG count. Added a section covering
+all three, read-only over the cached `integrated.h5ad` (verified byte-identical after
+re-execution). Two findings came out of it:
+
+**`GPRC5D` is not a highly variable gene** — mean 0.061 vs `TNFRSF17`'s 0.492 (8x),
+HVG in 6 of ~50 patients. Affects nothing (embedding does not need it; stage 08 reads
+raw counts) but it is the first number from this cohort behind the standing claim that
+GPRC5D is dropout-prone. **GPRC5D-negative calls deserve more scepticism than
+BCMA-negative ones.** The panel is deliberately not forced into the HVG set.
+
+**The plasma-cell integration failure is the stage-04 censoring, measured:**
+
+    compartment    MMRF     WU1     WU2    MMRF/WU1
+    non-plasma     5,829   3,273   2,879     1.8x
+    plasma-like   22,477   5,036   4,888     4.5x
+
+MMRF's two biggest plasma clusters are 68% and 88% above 10,000 UMIs — cells WashU
+cannot contain. WashU's press against the ceiling instead. Harmony is not failing; the
+populations differ. Two regression tests pin this.
+
 ### One defect found and fixed
 
 `gene_space.to_canonical_symbols` named the `var` index `canonical_symbol` while also
@@ -886,7 +910,7 @@ named `symbol`, and `tests/test_integration.py` round-trips through `.h5ad` so a
 serialization-only bug cannot hide again. **Lesson for later stages: anything that
 only fails on write needs a test that writes.**
 
-Test suite: **129 passed, 2 skipped** in `mm-core` (131 collected); **76 passed, 55
+Test suite: **131 passed, 2 skipped** in `mm-core` (133 collected); **76 passed, 57
 skipped** on a fresh clone with no `raw/` and no `results/`.
 
 Note `tests/test_integration.py` already existed — it held 11 io->gene_space

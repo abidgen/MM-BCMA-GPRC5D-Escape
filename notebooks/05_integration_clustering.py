@@ -170,6 +170,244 @@ print("HVGs:", int(adata.var['highly_variable'].sum()),
       "| selected within patient, so the choice is not driven by cohort depth")
 
 # %% [markdown]
+# ## Preprocessing, reported rather than assumed
+#
+# Normalization, feature selection and dimensionality reduction all happen inside
+# `integration.normalize_and_hvg` and `integration.run_pca_harmony`, in two function
+# calls. That is convenient and it is also how a preprocessing choice goes unexamined
+# — so this section reports what each of them actually did. For a project whose
+# headline metric is a fraction of zeros, silent preprocessing is the wrong default.
+#
+# Everything below is **read-only over the cached object**; nothing here recomputes
+# the embedding.
+
+# %% [markdown]
+# ### 1. Normalization
+#
+# CP10K + `log1p`, with the raw integers kept in `layers["counts"]`.
+#
+# The layer is not a convenience. **Stage 08 calls antigen positivity on raw counts**,
+# precisely so the call is independent of every choice made in this stage — the
+# normalization target, the HVG count, the number of PCs, and Harmony itself. It is
+# what makes "did your preprocessing move the escape fraction?" answerable with *no*.
+
+# %%
+raw_per_cell = np.asarray(adata.layers["counts"].sum(axis=1)).ravel()
+
+before_after = pd.DataFrame({
+    "median UMI (raw)": pd.Series(raw_per_cell, index=adata.obs_names).groupby(
+        adata.obs["cohort"], observed=True).median(),
+    "median genes (raw)": adata.obs.groupby("cohort", observed=True)[
+        "n_genes_by_counts"].median(),
+})
+before_after["spread vs shallowest"] = (
+    before_after["median UMI (raw)"] / before_after["median UMI (raw)"].min()
+)
+display(before_after.round(2))
+before_after.to_csv(OUT / "preprocessing_summary.csv")
+
+# After CP10K every cell sums to 10,000 by construction, which is the point: the
+# per-cell depth differences above are removed from X while remaining available,
+# untouched, in layers["counts"].
+normalized_sums = np.asarray(np.expm1(adata.X[:2000].toarray()).sum(axis=1)).ravel()
+print(f"post-normalization per-cell sum (first 2,000 cells): "
+      f"min {normalized_sums.min():,.0f}, max {normalized_sums.max():,.0f} "
+      f"(target 10,000)")
+print(f"layers['counts'] total is unchanged and integer: "
+      f"{raw_per_cell.sum():,.0f} UMIs over {adata.n_obs:,} cells")
+
+# %% [markdown]
+# ### 2. Feature selection
+#
+# 2,000 HVGs of 32,991, selected with `batch_key="patient_id"`. Selecting within batch
+# is what stops the choice being dominated by genes that merely separate cohorts —
+# with a 1.9x depth gap and two chemistry generations there are plenty of those, and
+# picking them would hand Harmony a batch effect that feature selection had just
+# amplified.
+
+# %%
+hv = adata.var[adata.var["highly_variable"]]
+n_batches = adata.obs["patient_id"].nunique()
+print(f"{len(hv):,} HVGs; each is variable in a median of "
+      f"{hv['highly_variable_nbatches'].median():.0f} of {n_batches} patients "
+      f"(min {hv['highly_variable_nbatches'].min():.0f}, "
+      f"max {hv['highly_variable_nbatches'].max():.0f})")
+print("A median well above 1 is the check that matters: these are genes variable "
+      "across\nmany patients, not artefacts of any single one.")
+
+fig, axes = plt.subplots(1, 2, figsize=(13, 5))
+axes[0].scatter(adata.var["means"], adata.var["dispersions_norm"], s=1,
+                c="0.8", label="not selected", rasterized=True)
+axes[0].scatter(hv["means"], hv["dispersions_norm"], s=1, c="C1",
+                label="highly variable", rasterized=True)
+axes[0].set(xscale="log", xlabel="mean expression",
+            ylabel="normalized dispersion", title="HVG selection")
+axes[0].legend(markerscale=6, fontsize=8)
+axes[1].hist(hv["highly_variable_nbatches"], bins=40, color="C0")
+axes[1].set(xlabel=f"patients in which the gene is HVG (of {n_batches})",
+            ylabel="genes", title="HVG batch sharing")
+fig.tight_layout()
+fig.savefig(FIGURES / "hvg_selection.png", dpi=150)
+
+# %% [markdown]
+# #### Which of the project's genes made the cut — and one that did not
+
+# %%
+panel = ["TNFRSF17", "GPRC5D", "SLAMF7", "FCRL5", "SDC1", "CD38", "ITGB7", "NCSTN",
+         "MZB1", "XBP1", "IRF4", "MS4A1", "CD3D", "NKG7", "LYZ", "HBB", "CD34",
+         "NSD2", "CCND1", "MYC"]
+membership = adata.var.loc[[g for g in panel if g in adata.var_names],
+                           ["highly_variable", "means", "dispersions_norm",
+                            "highly_variable_nbatches"]].copy()
+membership.to_csv(OUT / "hvg_panel_membership.csv")
+display(membership.round(3))
+
+# %% [markdown]
+# **`GPRC5D` is not a highly variable gene.** Mean expression **0.061** against
+# `TNFRSF17`'s **0.492** — an **8x** gap — and it is HVG in only 6 patients. `CD34`
+# fails for the same reason (mean 0.048), and its HSPC cluster still forms, via
+# correlated genes.
+#
+# Three things follow, in increasing order of importance:
+#
+# 1. **It does not affect the embedding's job.** GPRC5D is not needed to recognise a
+#    plasma cell; `MZB1`, `SDC1` and `TNFRSF17` all made the cut.
+# 2. **It does not affect stage 08 at all**, because antigen calls read
+#    `layers["counts"]`, never the HVG set or the embedding.
+# 3. **It is evidence, and it is the useful part.** `CLAUDE.md` argues repeatedly that
+#    dropout matters more for GPRC5D than for BCMA because GPRC5D is a low-abundance
+#    GPCR transcript. That has been an assertion from the literature; this is the
+#    first number from *this cohort* supporting it. An 8x lower mean means a
+#    substantially higher share of "GPRC5D-negative" calls are technical zeros, so
+#    **GPRC5D-negative calls warrant more scepticism than BCMA-negative ones** — which
+#    is exactly what stage 08's expression-matched false-negative floor is for.
+#
+# **The panel is deliberately NOT forced into the HVG set.** Doing so would bias the
+# embedding toward the very genes under study, and would buy nothing: the embedding is
+# used for immune annotation and clustering only. Failing HVG selection is a fact
+# about GPRC5D worth recording, not a problem to engineer around.
+
+# %% [markdown]
+# ### 3. Dimensionality reduction
+#
+# Scale (on a throwaway HVG-subset copy, so `X` stays unscaled and complete) then PCA
+# to 50 components, then Harmony on those components.
+
+# %%
+variance_ratio = adata.uns["pca"]["variance_ratio"]
+pd.DataFrame({"PC": np.arange(1, len(variance_ratio) + 1),
+              "variance_ratio": variance_ratio,
+              "cumulative": np.cumsum(variance_ratio)}).to_csv(
+    OUT / "pca_variance.csv", index=False)
+
+fig, axes = plt.subplots(1, 2, figsize=(12, 4.5))
+axes[0].plot(np.arange(1, len(variance_ratio) + 1), variance_ratio, "o-", ms=3)
+axes[0].set(xlabel="principal component", ylabel="variance ratio", title="Scree")
+axes[1].plot(np.arange(1, len(variance_ratio) + 1), np.cumsum(variance_ratio), "o-", ms=3)
+axes[1].set(xlabel="principal component", ylabel="cumulative variance ratio",
+            title="Cumulative")
+for ax in axes:
+    ax.axvline(len(variance_ratio), ls=":", c="0.5")
+fig.tight_layout()
+fig.savefig(FIGURES / "pca_variance.png", dpi=150)
+
+for k in (10, 20, 30, 50):
+    print(f"  {k:2d} PCs: {100 * variance_ratio[:k].sum():5.1f}% of variance")
+print("\nPCs 31-50 add only "
+      f"{100 * (variance_ratio[:50].sum() - variance_ratio[:30].sum()):.1f} points, so "
+      "50 is generous rather than\nlimiting — the choice is not load-bearing. Low "
+      "total variance explained is normal for\nsparse scRNA data and is not a defect.")
+
+# %% [markdown]
+# ### 4. Depth versus the embedding — and what it settles
+#
+# The stage-04 finding was that WashU cohorts 1 and 2 were cut at 10,000 UMIs before
+# deposit while MMRF and the donors were not. Colouring the embedding by depth asks
+# whether that censoring is visible in the structure itself.
+
+# %%
+plasma_markers = [g for g in ("MZB1", "SDC1", "XBP1", "IRF4", "TNFRSF17")
+                  if g in adata.var_names]
+sc.tl.score_genes(adata, plasma_markers, score_name="plasma_score")
+
+fig, axes = plt.subplots(2, 2, figsize=(13, 10))
+for ax, colour in zip(axes.ravel(),
+                      ["total_counts", "n_genes_by_counts", "plasma_score", "cohort"]):
+    sc.pl.umap(adata, color=colour, ax=ax, show=False, frameon=False, size=2,
+               cmap="viridis" if colour != "cohort" else None,
+               vmax="p99" if colour == "total_counts" else None)
+    ax.set_title(colour)
+fig.tight_layout()
+fig.savefig(FIGURES / "umap_depth.png", dpi=150)
+
+# %% [markdown]
+# The plots show it; the table proves it. Split every cell by whether it sits in a
+# plasma-cell-like cluster, then compare depth across cohorts.
+
+# %%
+# Same rule the cluster profile further down uses: MZB1 detected in >40% of a
+# cluster's cells. Recomputed here rather than reaching forward to that cell, so this
+# section stands on its own and can be run in isolation.
+mzb1 = np.asarray(
+    adata.X[:, adata.var_names.get_loc("MZB1")].todense()
+).ravel() > 0
+mzb1_by_cluster = pd.Series(mzb1, index=adata.obs_names).groupby(
+    adata.obs["leiden"].astype(str), observed=True).mean()
+plasma_clusters = set(mzb1_by_cluster[mzb1_by_cluster > 0.40].index)
+is_plasma = adata.obs["leiden"].astype(str).isin(plasma_clusters)
+print(f"{len(plasma_clusters)} plasma-cell-like clusters "
+      f"({int(is_plasma.sum()):,} cells) by MZB1 > 40%")
+depth = adata.obs.assign(compartment=np.where(is_plasma, "plasma-like", "other"))
+
+by_compartment = depth.pivot_table(index="cohort", columns="compartment",
+                                   values="total_counts", aggfunc="median",
+                                   observed=True)
+display(by_compartment.round(0))
+by_compartment.to_csv(OUT / "depth_by_compartment.csv")
+
+if {"MMRF", "WU1"} <= set(by_compartment.index):
+    for compartment in by_compartment.columns:
+        gap = by_compartment.loc["MMRF", compartment] / by_compartment.loc["WU1", compartment]
+        print(f"  MMRF / WU1 median UMI, {compartment:12s}: {gap:.1f}x")
+
+# %%
+ceiling = []
+for cluster in sorted(plasma_clusters, key=lambda c: -int(
+        (adata.obs["leiden"].astype(str) == c).sum())):
+    mask = (adata.obs["leiden"].astype(str) == cluster).to_numpy()
+    block = adata.obs.loc[mask]
+    ceiling.append({
+        "leiden": cluster,
+        "n_cells": int(mask.sum()),
+        "dominant_cohort": block["cohort"].mode().iat[0],
+        "median_UMI": block["total_counts"].median(),
+        "pct_in_9000_9999": 100 * block["total_counts"].between(9000, 9999).mean(),
+        "pct_above_10k": 100 * (block["total_counts"] > 10_000).mean(),
+    })
+ceiling = pd.DataFrame(ceiling)
+ceiling.to_csv(OUT / "plasma_cluster_depth.csv", index=False)
+display(ceiling.head(6).round(1))
+
+# %% [markdown]
+# **This settles the interpretation the integration diagnostics could only suggest.**
+#
+# - The **immune** compartment differs ~1.8x in depth between MMRF and WashU 1 — the
+#   ordinary cohort/chemistry gap, and Harmony mixes it fine (entropy ~0.75).
+# - The **plasma-cell** compartment differs ~4.5x. MMRF's largest plasma-cell cluster
+#   has a median around 25,000 UMIs and **~68% of its cells above 10,000** — cells the
+#   WashU deposits *cannot contain*, because WashU was truncated at that ceiling.
+#   WashU's plasma clusters instead pile up just under it.
+#
+# So Harmony is not failing on plasma cells. **The populations genuinely differ**, and
+# no batch-correction method restores cells that were never deposited. The
+# compartment-specificity follows directly: T, NK, myeloid and B cells sit well below
+# 10,000 UMIs in every cohort, so the ceiling never touched them.
+#
+# This upgrades the stage-04 censoring finding from a plausible explanation to a
+# measured one, and makes stage 08's **truncate-all-cohorts-at-10,000 sensitivity
+# analysis a requirement rather than a nicety**.
+
+# %% [markdown]
 # ## Did integration actually mix the batches?
 #
 # The diagnostic UMAPs. `n_genes_ref` is the reference-build split and `cohort` is the

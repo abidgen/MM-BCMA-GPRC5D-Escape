@@ -231,3 +231,75 @@ def test_the_harmonized_object_survives_a_round_trip_through_h5ad(tmp_path):
     assert list(back.var_names) == list(adata.var_names)
     for gene in ("TNFRSF17", "GPRC5D", "NSD2"):
         assert gene in back.var_names
+
+
+requires_stage05 = pytest.mark.skipif(
+    not (config.RESULTS_DIR / "05_integration" / "integrated.h5ad").exists(),
+    reason="needs the stage-05 object (run notebooks/05_integration_clustering.ipynb)",
+)
+
+
+@requires_data
+@requires_stage05
+def test_plasma_cell_depth_gap_is_a_compartment_effect_not_a_cohort_one():
+    """The measurement the stage-05 interpretation rests on.
+
+    Harmony mixes the immune compartment (cohort entropy ~0.75) and does not mix the
+    plasma-cell compartment (~0.11). The explanation is that WashU was cut at 10,000
+    UMIs before deposit and MMRF was not, and plasma cells — professional secretors —
+    are the cells that ceiling actually removes. If that is right, the MMRF-vs-WashU
+    depth gap must be far larger among plasma cells than among everything else.
+
+    It is: ~4.5x vs ~1.8x. Asserted loosely, since the exact values would move if the
+    clustering were ever recomputed, but the asymmetry itself is the claim.
+    """
+    import anndata
+
+    adata = anndata.read_h5ad(
+        config.RESULTS_DIR / "05_integration" / "integrated.h5ad", backed="r"
+    )
+    mzb1 = np.asarray(adata[:, "MZB1"].X.todense()).ravel() > 0
+    clusters = adata.obs["leiden"].astype(str)
+    by_cluster = pd.Series(mzb1, index=adata.obs_names).groupby(clusters).mean()
+    plasma = set(by_cluster[by_cluster > 0.40].index)
+    assert plasma, "no plasma-cell-like cluster found at all"
+
+    frame = adata.obs.assign(
+        is_plasma=clusters.isin(plasma).to_numpy(),
+        depth=adata.obs["total_counts"].to_numpy(),
+    )
+    medians = frame.pivot_table(index="cohort", columns="is_plasma", values="depth",
+                                aggfunc="median", observed=True)
+
+    immune_gap = medians.loc["MMRF", False] / medians.loc["WU1", False]
+    plasma_gap = medians.loc["MMRF", True] / medians.loc["WU1", True]
+    assert immune_gap < 2.5, f"immune depth gap unexpectedly large: {immune_gap:.1f}x"
+    assert plasma_gap > 3.0, f"plasma depth gap unexpectedly small: {plasma_gap:.1f}x"
+    assert plasma_gap > 2 * immune_gap
+
+    # And the mechanism: MMRF plasma cells sit above a ceiling WashU cells cannot cross.
+    mmrf_plasma = frame[(frame["cohort"] == "MMRF") & frame["is_plasma"]]
+    wu1_plasma = frame[(frame["cohort"] == "WU1") & frame["is_plasma"]]
+    assert (mmrf_plasma["depth"] > 10_000).mean() > 0.30
+    assert (wu1_plasma["depth"] > 10_000).mean() < 0.05
+
+
+@requires_data
+@requires_stage05
+def test_gprc5d_is_far_lower_abundance_than_bcma():
+    """Recorded because it is evidence, not because it is a problem.
+
+    GPRC5D fails HVG selection (mean 0.061 vs TNFRSF17's 0.492). That does not affect
+    the embedding's job or stage 08 — antigen calls read raw counts — but it is this
+    cohort's own confirmation that GPRC5D is a low-abundance transcript, and hence
+    that GPRC5D-negative calls carry more technical-zero risk than BCMA-negative ones.
+    """
+    import anndata
+
+    adata = anndata.read_h5ad(
+        config.RESULTS_DIR / "05_integration" / "integrated.h5ad", backed="r"
+    )
+    means = adata.var["means"]
+    assert means["GPRC5D"] < means["TNFRSF17"] / 4
+    assert not adata.var.loc["GPRC5D", "highly_variable"]
+    assert adata.var.loc["TNFRSF17", "highly_variable"]

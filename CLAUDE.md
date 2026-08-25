@@ -651,7 +651,12 @@ sources pointing in opposite directions:
 
 Dropout matters more than usual here specifically because **`GPRC5D` is a
 low-abundance GPCR transcript** and this cohort's median cell has only ~2,044
-detected genes (R-build QC, 61 samples, 181,336 cells). A large share of
+detected genes (R-build QC, 61 samples, 181,336 cells). **Quantified 2026-08-24 at
+stage 05: `GPRC5D`'s mean expression across 172,940 QC-passing cells is 0.061 against
+`TNFRSF17`'s 0.492 — an 8x gap — and it fails highly-variable-gene selection entirely
+(HVG in 6 of ~50 patients).** That is this cohort's own evidence for the asymmetry, and
+it means BCMA-negative and GPRC5D-negative calls are NOT equally reliable: a
+substantially larger share of GPRC5D zeros are technical. A large share of
 "GPRC5D-negative" calls will be technical zeros. The mitigations live in stage 08
 (threshold sensitivity band, depth-matched checks, expression-matched
 false-negative floor) and stage 09 (bulk RNA-seq cross-check); the point of this
@@ -1152,6 +1157,44 @@ PlasmaCell at no cost. **What it does forbid: reading any cross-cohort compariso
 malignant-cell state off this embedding.** And it makes stage 08's cohort covariate
 and the truncate-all-at-10k sensitivity analysis mandatory rather than advisable —
 this is the second independent sign of the same problem.
+
+**Preprocessing, and two findings from reporting it.** CP10K + `log1p` with raw
+integers kept in `layers["counts"]`; 2,000 HVGs of 32,991 selected with
+`batch_key="patient_id"` (median HVG is variable in 15 of ~50 patients, min 10, so the
+selection is not one cohort's artefact); scale + PCA to 50 components on a throwaway
+HVG-subset copy, so `X` stays unscaled and complete. 50 PCs is 28.4% of variance and
+PCs 31-50 add only 2.7 points, so the count is generous rather than load-bearing.
+
+1. **`GPRC5D` is not a highly variable gene** — mean **0.061** against `TNFRSF17`'s
+   **0.492**, an 8x gap, and HVG in only 6 patients. This affects nothing: the
+   embedding does not need it to find plasma cells, and stage 08 reads
+   `layers["counts"]`. **Its value is evidential.** This document argues repeatedly
+   that dropout matters more for GPRC5D than for BCMA because GPRC5D is a low-abundance
+   GPCR transcript; that has been an assertion from the literature, and this is the
+   first number from *this cohort* supporting it. A materially higher share of
+   "GPRC5D-negative" calls will be technical zeros, so **GPRC5D-negative calls warrant
+   more scepticism than BCMA-negative ones** — which is what stage 08's
+   expression-matched false-negative floor exists to quantify. The antigen panel is
+   deliberately **not** forced into the HVG set: that would bias the embedding toward
+   the genes under study for no gain.
+
+2. **The plasma-cell integration failure IS the stage-04 censoring, now measured
+   rather than inferred.** Median UMIs per cell, split by compartment:
+
+   | compartment | MMRF | WU1 | WU2 | MMRF/WU1 |
+   |---|---|---|---|---|
+   | non-plasma | 5,829 | 3,273 | 2,879 | **1.8x** |
+   | plasma-like | 22,477 | 5,036 | 4,888 | **4.5x** |
+
+   MMRF's two largest plasma-cell clusters have **68%** and **88%** of their cells
+   above 10,000 UMIs — cells the WashU deposits cannot contain, because WashU was cut
+   at that ceiling. WashU's plasma clusters instead press up against it (7.5-8.3% of
+   cells in the 9,000-9,999 band, against 1.2% for MMRF's cluster 7). So Harmony is not
+   failing; **the populations genuinely differ**, and no correction restores cells that
+   were never deposited. The compartment-specificity follows: T/NK/myeloid/B sit well
+   below 10,000 UMIs everywhere, so the ceiling never touched them, and Harmony mixes
+   them to 0.75. `results/05_integration/depth_by_compartment.csv` and
+   `plasma_cluster_depth.csv`; two regression tests pin the asymmetry.
 
 One defect found and fixed: `gene_space.to_canonical_symbols` named the `var` index
 `canonical_symbol` while also keeping a `canonical_symbol` column holding the
