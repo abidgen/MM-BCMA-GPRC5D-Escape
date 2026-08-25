@@ -1,5 +1,18 @@
 # CLAUDE.md — MM Dual-Antigen (BCMA/GPRC5D) Escape Risk Analysis (Python rebuild)
 
+> **Detail lives in `docs/`.** This file carries the objective, the live conventions,
+> the forward instructions for unrun stages, and the current position on every settled
+> question. Four companion files carry the evidence and the history:
+>
+> | file | holds |
+> |---|---|
+> | `docs/dataset-ground-truth.md` | archive forensics, the Ensembl-ID reconstruction, GEO series metadata, bulk inventory, the S1 patient mapping |
+> | `docs/stage-results.md` | run output for stages 01–05b, module validation logs, test-suite baselines |
+> | `docs/decisions-archive.md` | every superseded position, why it was wrong, and the two design reviews verbatim |
+> | `docs/environments.md` | the five `envs/*.yml` bodies, channel deviations, build traps, verification |
+>
+> If a `docs/` file and this one disagree, **this one is current**.
+
 ## Objective
 
 For each multiple myeloma patient in GSE223060, quantify the fraction of malignant
@@ -16,83 +29,12 @@ Most antigen-escape literature asks a before/after question (did the antigen
 disappear after treatment). This project asks a baseline question instead: how much
 dual-antigen escape risk is already present in a patient's tumor before any
 treatment, due to pre-existing clonal heterogeneity.
-
-**Scope expansion, 2026-08-20.** A design review of this plan added a robustness
-layer and two new pipeline stages, all adopted. The motivating observation:
-`frac_double_negative` is a *fraction of zeros*, the noisiest quantity scRNA-seq
-produces, and the original plan bounded only one of its two error directions. The
-additions fall into four groups, each documented in place below rather than
-duplicated here:
-1. **Defend the metric** — threshold sensitivity band, dropout/depth checks,
-   bootstrap CIs, matched bulk RNA-seq validation, normal-BM controls (stages 08, 09).
-2. **New science** — is the double-negative population a real subclone or scattered
-   noise, what phenotype do escape cells have, and a multi-antigen coverage matrix
-   (stages 08, 10).
-3. **Rigor upgrades to planned stages** — `infercnvpy` required, ratio-based
-   light-chain calls, per-patient un-integrated subclustering, patient-level
-   statistics in stage 11, `scCODA` for composition (stages 05-07, 11).
-4. **Framing** — the mRNA-vs-protein limitation and a two-sided bias table (stage 12).
-
-The sequence was **renumbered, not appended to**, so that stage numbers still run in
-true execution order: the two new stages took 09 and 10, pushing cell-cell
-communication to 11 and the decision packet to 12.
-
-The single highest-value addition is the subclone-vs-noise test in stage 10: "3% of
-cells are double-negative" and "there is a pre-existing 3% resistant subclone" are
-different claims, and only the second one predicts selection under therapy — which
-is the project's entire clinical premise.
-
-**Second design review, 2026-08-21 — five overclaims corrected, one analysis added.**
-A second review read the plan as a whole and found no method errors, but flagged that
-several *claims* outrun what the data can support. All five corrections are adopted,
-plus two caveats the review itself did not raise. Each is documented in place below:
-
-1. **Clustering ≠ clonality (stage 10).** Transcriptional coherence of the DN
-   population has many possible causes — cell cycle, stress, IFN, depth, batch — not
-   only a genetic subclone; and a genuine genetic subclone need not form a tidy
-   transcriptional island. `clonality-of-escape` is replaced by a three-level
-   **DN-coherence hierarchy** in which the word *subclone* requires CNV support.
-2. **Bulk RNA-seq validates antigen *abundance*, not the DN fraction (stage 09).**
-   Bulk destroys the joint single-cell distribution: a tumor that is 50%
-   BCMA⁺GPRC5D⁻ plus 50% BCMA⁻GPRC5D⁺ looks, in bulk, like both antigens are well
-   expressed, while containing *zero* dual-positive cells. Reframed accordingly.
-3. **A probabilistic dropout-adjusted DN estimate joins the binary one (stage 08).**
-   The binary call stays primary and is what stage 10 consumes; imputation/denoising
-   is still forbidden for positivity calls.
-4. **The "label-permutation null" was mis-specified (moves stage 09 → 08).** Permuting
-   antigen labels within patient does not test "no signal" — it tests *independence*
-   between BCMA-negativity and GPRC5D-negativity. That is a better question than the
-   one it was written to answer, and it becomes the added analysis below.
-5. **Normal-BM controls give marrow expression context, not a safety axis (stage 09).**
-   GPRC5D's clinically decisive off-tumor site is keratinized tissue, which a bone
-   marrow dataset cannot see at all.
-
-**The added analysis — BCMA/GPRC5D co-negativity enrichment (stage 08).** Per patient,
-build the 2×2 of BCMA± × GPRC5D± over malignant cells and test whether double-negativity
-exceeds the product of the two marginal negative rates. Two patients with the same 6% DN
-fraction are different clinical propositions if one is 6% ≈ 0.3 × 0.2 (independent
-antigen heterogeneity, two separate partial failures) and the other is 6% at 4× the
-independence expectation (the *same* cells suppressing both targets). Only the second is
-a coordinated antigen-low phenotype, which is precisely what a dual-target construct
-cannot escape by adding a second binder — and it is what stage 10 then goes looking for
-a mechanism behind. This is the sharpest question the dataset can answer and it costs
-one contingency table per patient.
-
-**Two caveats the review did not raise, both load-bearing:**
-- **The independence null must be depth-conditioned, or "co-escape enrichment" is a
-  library-size artifact.** Dropout is a per-*cell* property: a shallow cell is more
-  likely to read zero for *both* genes, manufacturing exactly the positive association
-  the test is looking for. A naive within-patient permutation destroys the depth↔label
-  coupling and will therefore report enrichment on pure noise, biased in the project's
-  own direction of interest. The null is permuted **within depth strata** (or computed
-  against a per-cell independence model where each cell's P(BCMA⁻) and P(GPRC5D⁻) are
-  functions of its own depth). This is not a refinement; the unconditioned test is
-  simply wrong here.
-- **`infercnvpy` may not resolve *sub*clonal CNV, and a null there is not evidence of
-  absence.** Separating tumor from normal by CNV is far easier than resolving structure
-  *within* a single patient's clone at ~2,044 genes/cell. Level 3 of the coherence
-  hierarchy therefore reports **supported / not evaluable**, never "no CNV subclone",
-  and per-patient CNV resolution is stated rather than assumed.
+**The plan went through two design reviews (2026-08-20 scope expansion, 2026-08-21
+five-overclaim correction) and both were adopted in full.** Their conclusions are
+restated at the stages they bind; the reviews themselves, and every position they
+replaced, are in `docs/decisions-archive.md`. Read that before re-opening a settled
+question — most "obvious improvements" to this plan have already been tried and
+reversed for a stated reason.
 
 ### Scientific hierarchy — what this project claims, in order
 
@@ -167,422 +109,104 @@ source or regenerable.
 
 ---
 
-## Data — confirmed ground truth (do not re-guess this, it's been verified)
-
-**Source:** GSE223060 (scRNA-seq) / GSE223061 (matched bulk RNA-seq — **no longer
-"optional"; it is now the stage 09 orthogonal validation set**), NCBI GEO. Paper:
-"Single-Cell Discovery and Multiomic Characterization of Therapeutic Targets in
-Multiple Myeloma" (Cancer Research, 2023). 53 BM samples from 41 patients per the
-paper's main analysis (MMRF Immune Atlas Pilot + 2 WashU cohorts); the GEO archive
-itself bundles 62 sample entries (includes normal/control BM beyond the 53 disease
-samples).
-
-**No raw FASTQ/SRA exists for this series.** Confirmed directly against NCBI. Only
-processed Cell Ranger *filtered* output is public — not raw, not unfiltered
-(matters for ambient-RNA correction, see below). Do not attempt to find or process
-raw reads for this dataset; this is a closed question.
-
-**Archive structure (confirmed by direct extraction):**
-```
-GSE223060_RAW.tar                              # outer archive, ~970 MB
-  |-- <GSM_ID>_<sample_name>.tar.gz             # one per-sample archive (62 total)
-        |-- (extract to) raw/samples/<GSM_ID>_<sample_name>/
-              |-- <sample_name>/                # ONE EXTRA NESTING LEVEL
-                    |-- barcodes.tsv             # uncompressed, no .gz
-                    |-- genes.tsv                # single column, gene symbols only
-                    |-- counts.mtx               # NOT "matrix.mtx"
-```
-
-**Critical implications for the Python loader:**
-- Filenames are old Cell Ranger v2-style (`counts.mtx`, `genes.tsv`), not the
-  `matrix.mtx`/`features.tsv` that `scanpy.read_10x_mtx()` expects — that function
-  will silently fail to find these files. Load explicitly with
-  `scanpy.read_mtx()` on `counts.mtx`, then attach `.obs`/`.var` from
-  `barcodes.tsv`/`genes.tsv` manually, rather than relying on any 10x-directory
-  auto-detection helper.
-- `genes.tsv` is a **single column of gene symbols**, not the usual 2-3 column
-  Ensembl+symbol file — don't write code that assumes a `gene_id` column exists.
-- Data sits one directory level deeper than the GSM-named folder.
-
-Sample naming observed: mix of `MMRF_####` (MMRF Immune Atlas Pilot cohort), bare
-numeric IDs with `_N` suffixes (e.g. `27522_1` through `27522_6` — likely multiple
-timepoints/fractions per patient), `MMY#####` IDs, `ND_######`, and `BM#` (likely
-normal bone marrow controls). **Disease stage/cytogenetic metadata per sample is
-NOT in the filenames** — pull it from the paper's Supplementary Table S1 before
-building the analysis manifest.
-
-**CRITICAL — mixed Cell Ranger references across samples (confirmed):** The 62
-samples were processed against **two** references, distinguishable by row count in
-`genes.tsv`:
-- 33538 genes — 37 samples
-- 33694 genes — 25 samples (including `56203_1`, see below)
-
-**`56203_1` is NOT a third reference — it is a truncated deposit, and it is repaired
-rather than excluded (corrected 2026-08-24).** The earlier reading (a "22184-gene
-build missing `TNFRSF17`") was a misdiagnosis, and the exclusion decision rested on
-it. What the files actually show:
-
-```
-counts.mtx header:      33694 1837 2135520      <- a normal 33694-build matrix
-genes.tsv:              22185 rows, ends 'KBTBD', NO trailing newline
-33694 reference row 22185:      'KBTBD7'
-rows 1..22184 vs the reference: identical, a strict prefix
-```
-
-The gene-file write failed part-way through. `TNFRSF17` (canonical row 25539) and
-`IGLC1/2/3` (rows 32548-32552) were never absent from a reference — they were past
-the cut. `GPRC5D` (row 20472), `SLAMF7`, `FCRL5`, `SDC1` and `CD38` were all present
-even in the truncated file.
-
-The "22184 genes" figure was itself a **`wc -l` artifact**: the file has no trailing
-newline, so `wc -l` undercounts by one. There are 22185 written rows.
-
-**Decision: repair and retain.** `io.read_sample` substitutes the canonical column for
-the declared build — taken from the committed, position-verified gene map, not from
-another sample's file — after asserting that every written row matches the reference
-and that the final partial row is a prefix of the symbol it was cut from. If either
-assertion fails the load raises rather than substituting, so this is a provable repair
-and not a guess. Recovers 1,837 cells and a second sample for patient 56203, which
-matters if the `_N` suffixes are serial timepoints (see below). `config.EXCLUDED_SAMPLES`
-is now empty; the mechanism lives in `config.TRUNCATED_GENE_FILES`.
-
-**CRITICAL — the two references also use different HGNC symbol vintages, so a naive
-symbol intersection silently drops genes present in BOTH builds.** Confirmed
-2026-08-20 by direct comparison, and caught by the stage-03 notebook's required-gene
-assertions rather than by inspection — which is the argument for keeping those
-assertions:
-
-| 33538 (newer symbols) | 33694 (older symbols) | consequence if unharmonized |
-|---|---|---|
-| `NSD2`    | `WHSC1`   | **t(4;14) becomes uncallable** — the highest-risk MM translocation, and the `MS` class of the TC subgrouping at stage 10 |
-| `TENT5C`  | `FAM46C`  | loses a recurrently-deleted MM tumour suppressor (1p12) |
-| `NSD3`    | `WHSC1L1` | a **different gene** from NSD2 — do not conflate the two |
-| `ATP5F1A` | `ATP5A1`  | OXPHOS program member (stage 10) |
-
-**Decision (superseded 2026-08-21 — see "Ensembl-ID reconstruction" below): join on
-Ensembl ID, not on symbols at all.** Symbol canonicalization recovered these four
-(22,164 → 22,168 genes); the ID join recovers 32,991 and makes the alias map a
-regression assertion rather than the mechanism. The table above still matters — it is
-what the assertions check and why they exist.
-The four above are the ones this project's gene lists depend on; a fuller HGNC-based
-reconciliation is worth doing in `gene_space.py` since the same drift certainly affects
-genes outside the required set. **Never assume a missing required gene is biologically
-absent — check for a legacy symbol first.**
-
-Note also that the ~11.4k/11.5k symbols unique to each build are dominated by
-**annotation-version noise** — versioned clone identifiers such as `AC000032.1` vs
-`AC000032.2` — not genuinely absent genes. So 22,164 *understates* the recoverable gene
-space. That is tolerable for lncRNA/clone entries (HVG selection never reaches them) but
-was not tolerable for `NSD2`, which is exactly why the assertions exist.
-
-### Ensembl-ID reconstruction — SOLVED and verified 2026-08-21
-
-The deposit has no ID column: `genes.tsv` is symbol-only and contains **zero `ENSG`
-strings across all 62 samples**. Do not go looking for one. But the IDs are fully
-**reconstructible**, and this was verified end-to-end — it is the method, not a plan.
-
-There are only **three distinct `genes.tsv` files in the cohort** (checksum-verified,
-byte-identical within group), each a positional dump of a public reference:
-
-| rows | samples | reference | source GTF |
-|---|---|---|---|
-| 33538 | 37 | `refdata-cellranger-GRCh38-3.0.0` | Ensembl 93 |
-| 33694 | 24 | `refdata-cellranger-GRCh38-1.2.0` | Ensembl 84 |
-| 22184 | 1 | — | `56203_1`, excluded on other grounds |
-
-**Reconstruction recipe (reproduces both files exactly):**
-1. Fetch the Ensembl GTF (release 93 / 84) — ~41-44 MB each, not the 11 GB 10x tarball.
-2. Take `feature == "gene"` rows **in GTF order**, keep first occurrence per `gene_id`,
-   filtered to 10x's `mkgtf` biotype list (`protein_coding`, `lincRNA`, `antisense`,
-   the 8 `IG_*` and 6 `TR_*` classes). This yields exactly 33538 / 33694 rows.
-3. Apply the depositor's two transforms, in order: **`gsub("_", "-")`** then
-   **R `make.unique`**. Both are Seurat artifacts — the deposited files were written
-   through Seurat, which is what produced the `TBCE`/`TBCE.1` suffixes *and* the
-   `RP11-442N24--B` (Ensembl writes `__`) spellings.
-4. **Assert the result equals the deposited column position-for-position.** This is
-   what makes the reconstruction self-certifying: a wrong biotype filter or a wrong
-   release changes the row count or the order, and the assertion fails loudly.
-
-**Result: 0 mismatches / 33538 rows and 0 mismatches / 33694 rows.** The mapping is
-committed at `resources/gene_space/` (~1 MB gzipped, three TSVs: per-build
-`row_index → deposited_symbol → ensembl_id`, plus the intersection table). It does not
-need regenerating; the GTFs do not need re-downloading.
-
-**The payoff is large and was not anticipated by either review:**
-
-| join key | genes retained |
-|---|---|
-| raw symbols | 22,164 |
-| symbols + 4-gene alias map | 22,168 |
-| **Ensembl IDs** | **32,991** |
-
-**+10,827 genes — a ~49% larger gene space**, because 11,140 intersected IDs carry a
-*different symbol* in each build and were silently invisible to a symbol join. The
-earlier note that the unique-symbol remainder was "dominated by annotation-version
-noise" was too optimistic: most of it is real, recoverable genes.
-
-**It also proves the mis-pairing risk was real, not theoretical:**
-
-```
-33538 build:  TBCE -> ENSG00000285053
-33694 build:  TBCE -> ENSG00000116957     <- a DIFFERENT annotation entry
-```
-
-A symbol join silently merges those two rows. Nine canonical symbols remain duplicated
-*within* the ID intersection (`COG8`, `CYB561D2`, `EMG1`, `LINC01238`, `LINC01505`,
-`MATR3`, `PINX1`, `RGS5`, `TMSB15B`) — disambiguate as `SYMBOL__ENSGxxxxxxxxxxx`, never
-by dropping or by `var_names_make_unique()`, which would re-introduce exactly the
-positional mangling this section undoes.
-
-**Implemented and tested 2026-08-21** in `src/mm_escape/gene_space.py` (with a partial
-`config.py` carrying only the gene-space constants; the rest is filled in by the stages
-that derive it). Public API: `attach_ensembl_ids` (per sample, pre-concat, verifies
-position-for-position) -> `intersect_gene_space` (IDs only, refuses symbol-keyed input)
--> `to_canonical_symbols` (once, post-merge) -> `assert_required_genes`.
-`rebuild_gene_map_from_gtf` regenerates the committed map and re-verifies it. Verified
-against the real files: 33538+33694 -> 32,991 genes, 11,140 drifted symbols joined
-correctly, all 64 required genes present, and four failure paths confirmed to raise —
-reordered `var_names`, symbol-keyed intersection, a missing required gene (with the
-legacy-symbol hint), and `var_names_make_unique()`-style mangling.
-
-**Decision — `gene_space.py` joins on Ensembl ID; the alias map is demoted to an
-assertion.** All 21 spot-checked required genes survive the ID intersection. The
-four-gene alias dictionary (`WHSC1`→`NSD2` etc.) is kept **only** as a regression
-assertion, not as the harmonization mechanism — it addressed 4 of 11,140 drifted
-symbols. The earlier "drop the ~52 `make.unique`-ambiguous symbols" interim is
-**superseded and must not be implemented**: those genes are now resolved correctly
-rather than discarded.
-
-**Index convention.** Use `ensembl_id` as `var_names` **through the merge only** — that
-is where identity is load-bearing. Once the object is a single harmonized matrix the
-mis-pairing risk is gone, so switch `var_names` to the canonical Ensembl-93 symbol
-(with the 9 collisions suffixed as above) and retain `var["ensembl_id"]`,
-`var["symbol_33538"]`, `var["symbol_33694"]`. Reason: every downstream consumer is
-symbol-native — `score_genes` marker panels, dotplots, `celltypist`, `decoupler`,
-`liana` — and keeping IDs as the index buys no further correctness while making every
-figure unreadable and every gene-set call a translation step.
-
-**AnnData, not MuData.** MuData exists for multiple modalities over a shared `obs`
-axis (RNA + ADT + ATAC). This project has one cell-level modality. The stage-09 bulk
-RNA-seq is *sample*-level, so it shares no `obs` axis with the single-cell object and
-belongs as a plain DataFrame joined on `sample_id`, not as a MuData modality. Adding
-MuData here buys nothing and costs compatibility across the scanpy stack.
-
-**The 33538- and 33694-gene reference sets share only 22164 genes** *on raw symbols*
-(22,168 after harmonization). A union merge
-across retained samples would make ~11k genes structurally zero in whole sample
-cohorts — indistinguishable downstream from a true biological zero, which is
-exactly the quantity this project measures. **Decision: intersect gene sets across
-retained samples, never union**, before any concatenation (`anndata.concat` with
-`join="inner"`, not `join="outer"`). Assert that all markers needed downstream
-survive the intersection — BCMA (`TNFRSF17`), GPRC5D, backup antigens (`SLAMF7`,
-`FCRL5`), the full annotation marker panel, and the light-chain genes (`IGKC`,
-`IGLC1-7`) — hard-fail with the specific missing gene name(s) if any assertion
-fails, rather than silently proceeding on a partial marker set.
-
-**Verified 2026-08-20 — every target gene survives the intersection.** Spot-checked
-directly against `genes.tsv` in a 33538-gene sample (`MMRF_1695`), a 33694-gene
-sample (`27522_1`), and a normal-BM control (`BM4`): `TNFRSF17`, `GPRC5D`,
-`SLAMF7`, `FCRL5`, `SDC1`, `CD38`, `ITGB7`, `NCSTN`, `IGKC` are present in **both**
-reference builds. The 33538 build additionally carries `GPRC5D-AS1` (an antisense
-transcript, absent from 33694) — harmless, dropped by the intersection, and must
-**not** be substituted for `GPRC5D` anywhere. The hard assertions in
-`gene_space.py` are still required as a regression guard, but are expected to pass.
-
-### GEO series metadata — added and parsed 2026-08-24
-
-`raw/GSE22306{0,1}_family.soft.gz` (~8 KB each) carry per-sample facts that are **not
-derivable from filenames** and were absent from this document until 2026-08-24. Parsed
-into committed tables at `resources/sample_metadata/` (`raw/` is gitignored, same
-pattern as `resources/gene_space/`); regenerate with
-`io.rebuild_sample_metadata_from_soft`, which asserts sample counts and cohort
-resolution so a revised deposit fails loudly.
-
-**Cohort and prep, from `!Sample_extract_protocol_ch1`:**
-
-| cohort | n | chemistry | dead-cell removal | reference build |
-|---|---|---|---|---|
-| WashU 1 | 23 | 10x 3′ **v2** | **no** | 20× 33694, 2× 33538, 1 truncated |
-| WashU 2 | 13 | 10x 3′ v3.2 | yes | 13× 33538 |
-| MMRF | 18 | 10x 3′ v3.3 | yes | 18× 33538 |
-| Donors | 8 | 10x 3′ v3.2 | yes | 4× 33694 (`ND_*`), 4× 33538 (`BM*`) |
-
-**This is a confounder for the headline metric, and it is measured rather than
-assumed.** Sample-level medians of genes detected per pre-QC cell:
-
-    MMRF   v3.3   1916 genes/cell
-    WU2    v3.2   1210
-    Donor  v3.2   1103
-    WU1    v2     1023
-
-    v2 vs all-v3: 1023 vs 1408 = 1.38x, Mann-Whitney p = 6.5e-05,
-    but the sample distributions OVERLAP (v2 max 1602 > v3 min 793).
-
-**Do not quote a "2-3x v2-vs-v3 chemistry effect" — this cohort does not show one.**
-The axis that separates is **cohort** (MMRF ≈ 1.9× the others), of which chemistry
-version is one component alongside site and protocol. It still must be modelled:
-`frac_double_negative` is a fraction of zeros on a low-abundance transcript, so a 1.9×
-depth spread that tracks cohort will move it and read as biology. Carry `cohort` and
-`chemistry` as covariates in stage 08's depth regression and stage 10's null.
-
-**`n_genes_ref` is NOT a proxy for this** — the build split cuts across cohorts (two
-WU1 samples on 33538, the four `ND_*` donors on 33694). Stage 05's Harmony covariate
-needs `cohort`/`chemistry` in addition to, not instead of, `n_genes_ref`.
-
-**A free control:** the 8 donors span both references and are normal marrow, so
-stage 07's negative control doubles as a build/chemistry control in a population with
-no clone to confound it.
-
-**Raw data exists, under controlled access — "no raw data" was too strong.** The
-series design says raw data goes to dbGaP for patient privacy, with `ND_*` already
-available at **`phs000159`** and MMRF bulk at **`phs000748`** (BioProjects
-`PRJNA924769` / `PRJNA924778`). The practical conclusion is unchanged — no unfiltered
-matrices without a DAC application, so SoupX/DecontX remains unavailable — but
-"doesn't exist" and "exists behind a data-access committee" are different claims.
-
-**The deposit's own processing metadata is unreliable.** `!Sample_data_processing`
-claims Cell Ranger **v3.0.0 for all 62 samples**, which the files contradict for 24 of
-them (Ensembl 84 / CR 1.2.0). The files win — that reconstruction is checksum- and
-position-verified. Treat the rest of the SOFT text as evidence to check, not fact;
-every claim taken from it above was verified against the data.
-
-**Matched bulk RNA-seq (GSE223061) — already downloaded, previously unused.**
-`raw/unpacked_bulk/` holds **29 usable bulk samples** (inventory corrected
-2026-08-21 by direct count in `notebooks/01_download_data.py`, which now asserts
-these numbers): **18** MMRF samples as `<GSM>_<sample>_tpm.tsv.gz` (gene × TPM
-tables, GSM6939103-120) of which 2 are empty stubs, plus **13** WashU samples as
-`<GSM>_<sample>.tar.gz` (GSM6939090-102, all 4.5-5.4 MB). The earlier "18 + 12 = 30
-usable" was wrong twice over — the WashU count was 12 and the total did not subtract
-the stubs. Correct arithmetic: (18 - 2) + 13 = 29.
-**Overlap COMPUTED 2026-08-24 from the GEO titles, no longer inherited or
-S1-gated: 26 bulk samples have an exact scRNA match** (not "~28"). 31 bulk GSMs, minus
-2 empty stubs, minus 3 with no scRNA counterpart.
-
-**The two bulk cohorts are not the same assay, and stage 09 must not pool them:**
-
-| bulk cohort | n | prep | matching pseudobulk |
-|---|---|---|---|
-| MMRF | 18 (16 usable) | **CD138+ sorted** | malignant-cell pseudobulk |
-| WashU 1 | 13 | **unsorted BMMC** | **whole-sample** pseudobulk |
-
-Correlating malignant-PC pseudobulk against *unsorted* bulk measures tumour burden,
-not antigen abundance — the dilution by non-plasma cells is proportional to burden,
-which varies per patient and is itself correlated with the metric. That would have
-silently corrupted 10 of the 26 matched comparisons. Split by cohort and use the
-matching comparator.
-
-Other gotchas, confirmed by direct inspection:
-- **Two files are empty 114-byte gzip stubs and must be excluded**:
-  `GSM6939104_MMRF_1505_tpm.tsv.gz`, `GSM6939120_MMRF_2259_tpm.tsv.gz`. Both are real
-  GEO sample entries — a 114-byte read is a failed deposit, not "zero expression".
-- **The three bulk/sc ID mismatches, partly resolved.** `59114` was overstated: bulk
-  carries `59114_1` *and* `59114_2`, and `59114_1` matches scRNA exactly — only `_2`
-  is orphaned. `47499` and `98433` have no scRNA counterpart; note both are WashU
-  **cohort 1** bulk while `MMY98423` is cohort **2**, so the assumed
-  `98433` ↔ `MMY98423` pairing is doubtful rather than a simple typo. Do not guess
-  these; they are 3 of 29 and stage 09 works without them.
-
-**Patient mapping — SOLVED 2026-08-24 by Supplementary Table S1.** S1 landed in
-`raw/` and closes this. The naive rule (strip a trailing `_<digits>` only when the
-stem is purely numeric, e.g. `27522_1` -> `27522`) gives **43 patients from the 54
-myeloma samples** against the paper's 41 / 53. Both gaps close exactly, and the two
-corrections are independent of each other:
-
-- **`25183` is deposited but appears in NO supplementary table** — not the clinical
-  summary, not the disease-stage sheet. It is what the 53-vs-54 gap is made of.
-  `54 - 1 = 53`. It is **not dropped**: the data is real and stage 07 can use it. It
-  carries `in_paper_cohort == False` and `clinical_source == "none"` so a per-patient
-  aggregate excludes it deliberately rather than by accident.
-- **`83942` (WashU 1) and `MMY83942` (WashU 2) are one patient.** S1 lists them as
-  two, but with identical age (63), gender (Male), race (White), ISS stage (3) and
-  treatment (Unknown). One patient sampled under both WashU protocols.
-  `43 - 1 - 1 = 41`.
-
-Implemented in `io.rebuild_clinical_metadata_from_s1` -> `resources/sample_metadata/`
-(`patients_clinical.tsv`, 43 rows; `sample_disease_stage.tsv`, 22). `io.s1_patient_id`
-is the mapping; `load_manifest` now emits `patient_id_source == "S1"` and keeps the
-naive answer as `patient_id_naive` for comparison. `_assert_s1_reproduces_the_paper`
-checks all three counts off the committed GEO table, so a revised S1 fails loudly
-instead of quietly moving the denominator of `frac_double_negative`.
-
-**What else S1 carries.** Per patient: age, sex, race, ISS stage, treatment regimen,
-time-to-progression-or-death. Per sample: disease stage — but **WashU cohort 1 only**.
-MMRF and WashU cohort 2 get `disease_stage = NA` and one is *not* imputed;
-`newly_diagnosed` is a guess for those cohorts, not a datum. Two S1 patients
-(`47499`, `98433`) are bulk-only and have no scRNA sample — they stay in the patient
-table for stage 09.
-
-**The `_N` suffixes are serial disease-course timepoints. SETTLED, not inferred.**
-S1 sheet 2 reads:
-
-    27522_1  Primary     27522_2  Remission-1   27522_3  Relapse-1
-    27522_4  Relapse-2   27522_5  Remission-2   27522_6  Relapse-3
-    47491_1  SMM         47491_2  Primary       58408_1  SMM  -> 58408_2 Primary
-
-This confirms outright what the 2026-08-24 bulk/scRNA suffix argument had inferred,
-and **the longitudinal arm in the S1-gated section below is now real rather than
-speculative**. It also explains the lone non-`_1` samples: `37692_2` and `57075_3`
-are later timepoints whose earlier draws were not deposited.
-
-**An earlier figure of 47 patients / 57 disease samples is wrong and is superseded:
-it counted the four `ND_*` samples as disease. SETTLED 2026-08-24 against the GEO
-metadata**, which is now in the repo (see "GEO
-series metadata" below). `!Sample_source_name_ch1` reads **`Donor BMMC, aspirate,
-scRNAseq`** for all four `ND_*` and all four `BM*`, and those eight are exactly the
-samples carrying no `diagnosis` characteristic; the other **54 read
-`diagnosis: Multiple myeloma (MM)`**. `ND` = normal donor, and the suffixes are
-collection dates.
-
-| | samples | naive patients |
-|---|---|---|
-| `ND_*` counted as disease (the old figure) | 57 | 47 |
-| **`ND_*` as donors, `56203_1` repaired and retained** | **54** | **43** |
-
-The series summary states "53 bone marrow (BM) aspirates from 41 MM patients"
-verbatim, matching the paper — and matching what the S1 mapping above now produces.
-The denominator is settled; there is no remaining uncertainty in it.
-
-**The other five supplementary tables are committed too** (~500 KB, `raw/`, see
-`.gitignore` for which is which). Two are directly useful downstream and neither is
-yet consumed:
-- **Table S3** (file `s3`) — a 38x38 Pearson correlation matrix over the paper's
-  candidate target genes, plus per-cohort co-expressed and mutually-exclusive gene
-  pairs. It includes `GPRC5D` x `TNFRSF17`, and it is a caution as much as a
-  comparator: the pooled r is **0.064**, but per cohort it is **MMRF +0.62,
-  WU2 +0.54, WU1 -0.09** — the pair appears in the paper's co-expressed *and*
-  mutually-exclusive lists depending on cohort, and the sign tracks the cohort depth
-  ordering exactly. Whatever stage 08's co-escape enrichment finds must be read
-  against that. (Note these are sample-level correlations, not the per-cell
-  co-negativity stage 08 computes — related question, different unit.)
-- **Table S5** (file `s6`) — the paper's own bulk-vs-scRNA Pearson r per gene for
-  MMRF. A direct external comparator for stage 09.
-
-Not useful here: Table S2 (target novelty tiers, mild framing value), Table S4
-(NetMHC peptide-HLA binding), Table S6 (recurrent mutations, over different MMRF
-samples). **File `s5` is strict-OOXML** — `openpyxl` reports zero sheets for it and it
-is not corrupt; and files `s5`/`s6` are numbered off-by-one against their in-file
-titles.
-
-**Ambient RNA correction (SoupX/DecontX) is not possible for this dataset.** Both
-require the *unfiltered* Cell Ranger matrix (including empty droplets) to estimate
-the background contamination profile; GEO only hosts the *filtered* per-sample
-matrices. This is a real, stated limitation, not an oversight — see "QC
-methodology" below for the mitigation actually used instead.
-
-**Datasets explicitly evaluated and rejected as data sources:**
-- **He et al. 2022** (`ctm2.757`, paired NDMM/RRMM scVDJ-seq) — confirmed by
-  directly reading the paper (PMC8926895): no data availability statement, no
-  accession of any kind. Not usable as a data source under any framing. A
-  fabricated-looking accession (`GSE124310`) was floated for this paper at one
-  point and independently verified to actually belong to an unrelated
-  glioblastoma study — do not resurrect that number.
-- **GSE118900** (MGUS/SMM/NDMM/RRMM staging cohort) — real and open, but rejected
-  as the Phase 2 validation dataset: zero healthy controls, only 597 cells across
-  15 patients (as low as 7-24 per patient), too statistically thin for a per-cell
-  classification metric. `GSE117156` (below) is superior on every axis that
-  matters here.
-
----
+## Data — the rules that bind code
+
+**Full evidence: `docs/dataset-ground-truth.md`.** Everything below was verified
+against the real files; do not re-guess it, and do not re-derive it from the paper —
+where the deposit's own metadata disagrees with the files, the files win.
+
+**Source.** GSE223060 (scRNA-seq) + GSE223061 (matched bulk). 62 GEO sample entries:
+**54 myeloma** (41 patients, 53 in-cohort samples under the S1 mapping) + **8 donor
+marrows** (`BM*`, `ND_*`). Only Cell Ranger *filtered* matrices are public; raw data
+exists but sits behind dbGaP controlled access, so **SoupX/DecontX cannot be run**.
+
+**Loader rules** (`io.py`):
+- Files are Cell Ranger v2-style — `counts.mtx`, `genes.tsv`, `barcodes.tsv`, all
+  uncompressed, one directory level deeper than the GSM folder.
+  **`scanpy.read_10x_mtx()` will silently fail**; use `read_mtx` + manual `.obs`/`.var`.
+- `genes.tsv` is a **single column of symbols** — no `gene_id` column exists, and there
+  are **zero `ENSG` strings in any of the 62 files**. Do not go looking for one.
+- Matrices are genes × cells and must be transposed.
+- **`56203_1` is repaired, not excluded.** Its `genes.tsv` write was truncated at row
+  22185; the canonical column is substituted from the committed gene map behind a
+  prefix assertion that raises rather than guessing (`config.TRUNCATED_GENE_FILES`).
+  `config.EXCLUDED_SAMPLES` is empty.
+
+**Gene-space rules** (`gene_space.py`):
+- Two Cell Ranger references are in play — **33538 genes (37 samples, Ensembl 93)** and
+  **33694 (25 samples, Ensembl 84)** — with different HGNC symbol vintages.
+- **Join on reconstructed Ensembl ID, never on symbols.** The IDs were reconstructed
+  from the public GTFs and verified position-for-position (0 mismatches on both
+  builds); the map is committed at `resources/gene_space/` and does **not** need
+  regenerating. Symbols retain **22,164** genes; IDs retain **32,991** (+10,827),
+  because 11,140 intersected IDs carry a different symbol in each build.
+- **Intersect across retained samples, never union** (`anndata.concat(join="inner")`).
+  A union would make ~11k genes structurally zero in whole cohorts — indistinguishable
+  from the true biological zero this project measures.
+- `var_names` = Ensembl ID **through the merge only**, then canonical Ensembl-93
+  symbol; the 9 symbols still colliding get `SYMBOL__ENSG…`, never
+  `var_names_make_unique()`. Retain `var["ensembl_id"]`, `var["symbol_33538"]`,
+  `var["symbol_33694"]`.
+- **The required-gene assertions stay, and stay loud.** They caught the `NSD2`/`WHSC1`
+  drift that manual inspection missed twice. A missing required gene means *check for a
+  legacy symbol*, never *biologically absent*. The four-gene alias map
+  (`WHSC1`→`NSD2`, `FAM46C`→`TENT5C`, `WHSC1L1`→`NSD3`, `ATP5A1`→`ATP5F1A`) is a
+  **regression assertion only**, not the harmonization mechanism.
+- **AnnData, not MuData** — one cell-level modality. Stage-09 bulk is sample-level and
+  joins on `sample_id` as a DataFrame.
+
+**Cohort structure, and the confounder it carries:**
+
+| cohort | n | chemistry | dead-cell removal | deposit UMI ceiling |
+|---|---:|---|---|---|
+| WashU 1 | 23 | 10x 3′ v2 | no | **< 10,000** |
+| WashU 2 | 13 | 10x 3′ v3.2 | yes | **< 10,000** |
+| MMRF | 18 | 10x 3′ v3.3 | yes | none |
+| Donors | 8 | 10x 3′ v3.2 | yes | none |
+
+- **The deposit is pre-filtered, differently per cohort, and the 10,000-UMI ceiling is
+  a first-order confounder for stage 08.** Cells above it are enriched **3-21× for
+  `TNFRSF17`** and **20-70× for `GPRC5D`**, so 36 of 54 myeloma samples had the
+  antigen-positive tail of their own tumours removed before deposit. This inflates
+  `frac_double_negative` for WU1/WU2 — **a bias in the project's own direction of
+  interest**, baked in and not undoable. Carried as a covariate; stage 08 owes a
+  truncate-all-at-10k sensitivity run.
+- **Carry `cohort` AND `chemistry` as covariates.** The axis that separates depth is
+  cohort (MMRF ≈ 1.9× the others), of which chemistry is one component alongside site
+  and protocol. **`n_genes_ref` is not a proxy** — the build split cuts across cohorts.
+  Do not quote a "2-3× v2-vs-v3 chemistry effect"; this cohort shows 1.38× with
+  overlapping distributions.
+- **The 8 donors span both references and have no clone**, so stage 07's negative
+  control doubles as a free build/chemistry control.
+
+**Patient mapping — settled by Supplementary Table S1.** 41 patients / 53 in-cohort
+samples, reproducing the paper exactly. `25183` is deposited but absent from every
+supplementary table — retained, flagged `in_paper_cohort == False`. `83942` (WU1) and
+`MMY83942` (WU2) are **one patient**. `io.s1_patient_id` is the mapping;
+`_assert_s1_reproduces_the_paper` checks all three counts so a revised S1 fails loudly
+instead of quietly moving the metric's denominator.
+
+**The `_N` suffixes are serial disease-course timepoints**, settled by S1 sheet 2
+(`27522_1` Primary → `_6` Relapse-3). Not fractions, sorts or replicates.
+
+**Matched bulk (GSE223061): 29 usable, 26 with an exact scRNA match.** Two 114-byte
+gzip stubs are excluded (`GSM6939104_MMRF_1505`, `GSM6939120_MMRF_2259`); three IDs
+have no scRNA counterpart. **The two bulk cohorts are not the same assay and stage 09
+must not pool them** — MMRF bulk is CD138+ sorted (pairs with malignant-cell
+pseudobulk), WashU 1 bulk is unsorted BMMC (pairs with **whole-sample** pseudobulk).
+Pooling would make 10 of 26 comparisons measure tumour burden instead of antigen
+abundance.
+
+**Supplementary tables S3 and S5 are committed and not yet consumed** — S3 is the
+paper's 38×38 target-gene correlation matrix (`GPRC5D`×`TNFRSF17` pooled r = 0.064 but
+**MMRF +0.62 / WU2 +0.54 / WU1 −0.09**, sign tracking cohort depth exactly — read
+stage 08's co-escape result against this); S5 is the paper's own bulk-vs-scRNA r per
+gene, a direct comparator for stage 09.
+
+**Datasets evaluated and rejected as sources:** He et al. 2022 (no data availability
+statement at all — and the `GSE124310` accession once floated for it belongs to an
+unrelated glioblastoma study; do not resurrect it), GSE118900 (no healthy controls,
+597 cells across 15 patients).
 
 ## Phase 2 (unchanged from the R plan) — external validation on GSE117156
 
@@ -610,252 +234,96 @@ no LIANA+/CellChat cross-comparison between cohorts.
 
 ---
 
-## QC methodology (upgraded from the R build's provisional fixed thresholds)
+## QC methodology
 
-Three changes, grounded in `sc-best-practices.org`'s QC chapter
-(https://www.sc-best-practices.org/preprocessing_visualization/quality_control.html),
-adapted for what this specific dataset actually allows:
+Grounded in `sc-best-practices.org`'s QC chapter, adapted for what this dataset allows.
+Thresholds are **derived, run and documented** — `results/04_qc/qc_thresholds.csv`, and
+`docs/stage-results.md` for what the data forced.
 
-**1. MAD-based (median absolute deviation) outlier filtering, not fixed cutoffs.**
-Flag a cell as an outlier if it's more than 5 MADs from the median on
-`log1p_total_counts`, `log1p_n_genes_by_counts`, or `pct_counts_in_top_20_genes`
-(fraction of a cell's counts from its 20 highest-expressed genes — not tracked in
-the R build, add it), plus a tighter, dataset-specific check on `pct_counts_mt`.
-**The tutorial's exact numeric MAD counts and 8% mitochondrial cap are defaults
-for their demo dataset (healthy PBMC/BMMC), not something to copy verbatim onto
-bone marrow myeloma samples** — recompute and document per this cohort.
+**1. MAD-based outlier filtering, not fixed cutoffs**, re-derived **per cohort** (MMRF
+cells carry ~1.9× the genes/cell of WU1's, so a pooled MAD would flag much of WashU as
+low-quality for a batch reason). 5 MADs on `log1p_total_counts` and
+`log1p_n_genes_by_counts`, plus a dataset-specific `pct_counts_mt` cap that is
+**one-sided**: an unusually *low* mitochondrial fraction is not itself evidence of a
+low-quality cell, so only the high tail filters.
+The tutorial's numeric MAD counts and 8% mito cap are defaults for healthy PBMC/BMMC —
+**never copy them onto myeloma marrow.**
 
-**2. Ambient RNA cannot be formally corrected (see Data section) — mitigate at the
-antigen-scoring stage instead of leaving a naive `>0` positivity call in place.**
-Derive an empirical background/noise floor for BCMA and GPRC5D from cell types
-with no biological reason to express either gene (T cells, NK cells, myeloid) —
-any nonzero signal there is ambient contamination by definition. Set the
-malignant-cell antigen-positivity threshold above that floor. Document the
-derived threshold value and the population it was derived from. Uncorrected
-ambient contamination would tend to make truly double-negative cells register as
-false-positive, **underestimating** escape fraction — a stated, real bias
-direction.
+**2. `pct_counts_in_top_20_genes` is computed and reported but never filters.** In
+myeloma marrow an Ig-dominated library is a plasma cell's *normal* state, not a defect:
+the flagged decile is 21× enriched for `TNFRSF17` and its `SDC1` detection is 18.8% vs
+0.0% elsewhere. A MAD cut on it would preferentially delete antigen-**positive**
+malignant cells and inflate `frac_double_negative`. It is kept because it is one of the
+few ambient-Ig handles available at all. Re-enabling it is one explicit argument to
+`flag_outliers` (`qc.DEFAULT_FILTERS` vs `qc.ALL_FLAGS`), for a sensitivity run.
 
-**3. Dropout is the opposite-signed bias, and it is the larger one. It must be
-bounded, not just mentioned.** The earlier version of this document accounted only
-for ambient RNA. That was half the picture. `frac_double_negative` is a *fraction
-of zeros*, which is the noisiest quantity scRNA-seq produces, and it has two error
-sources pointing in opposite directions:
+**3. QC annotates, it does not delete.** Every stage-04 checkpoint holds every barcode
+with `obs["keep"]` set; filtering happens at stage 05. For a fraction-of-zeros metric,
+"does this survive a different QC?" is a question that *will* be asked, and it is only
+answerable if the filtered cells are still on disk.
+
+**4. Ambient RNA cannot be formally corrected** — SoupX/DecontX need the unfiltered
+matrices this deposit lacks. Mitigate at stage 08 instead: derive an empirical noise
+floor for BCMA and GPRC5D from cell types with no reason to express either (T, NK,
+myeloid), where any nonzero signal is ambient by definition, and set the positivity
+threshold above it. Document the value and the population it came from.
+
+**5. Dropout is the opposite-signed bias, and it is the larger one.** It must be
+**bounded, not just mentioned**. `frac_double_negative` is a fraction of zeros — the
+noisiest quantity scRNA-seq produces — with two error sources pointing opposite ways:
 
 | Source | Effect on a cell's antigen call | Effect on `frac_double_negative` |
 |---|---|---|
 | Ambient RNA | true negative reads as positive | **deflates** |
 | Dropout / limited sensitivity | true positive reads as negative | **inflates** |
 | Residual normal PCs called malignant | dilutes with antigen-lower cells | **inflates** |
+| Deposit UMI ceiling (WU1/WU2) | antigen-positive tail removed | **inflates** |
 | mRNA measured, protein targeted | see stage 12 limitation | direction unknown |
 
-Dropout matters more than usual here specifically because **`GPRC5D` is a
-low-abundance GPCR transcript** and this cohort's median cell has only ~2,044
-detected genes (R-build QC, 61 samples, 181,336 cells). **Quantified 2026-08-24 at
-stage 05: `GPRC5D`'s mean expression across 172,940 QC-passing cells is 0.061 against
-`TNFRSF17`'s 0.492 — an 8x gap — and it fails highly-variable-gene selection entirely
-(HVG in 6 of ~50 patients).** That is this cohort's own evidence for the asymmetry, and
-it means BCMA-negative and GPRC5D-negative calls are NOT equally reliable: a
-substantially larger share of GPRC5D zeros are technical. A large share of
-"GPRC5D-negative" calls will be technical zeros. The mitigations live in stage 08
-(threshold sensitivity band, depth-matched checks, expression-matched
-false-negative floor) and stage 09 (bulk RNA-seq cross-check); the point of this
-entry is that **neither bias may be left unquantified, and the headline number is
-reported as a bracketed interval, not a bare point estimate.**
+Dropout matters more than usual here because **`GPRC5D` is a low-abundance GPCR
+transcript** and this cohort is shallow: **1,162 median genes/cell** over 172,940
+post-QC cells (1,521 in the plasma compartment). Stage 05 measured the gap directly —
+`GPRC5D` mean **0.061** vs `TNFRSF17` **0.492**, an 8× difference, and `GPRC5D` fails
+HVG selection entirely. **BCMA-negative and GPRC5D-negative calls are therefore not
+equally reliable**; a materially larger share of GPRC5D zeros are technical.
+Mitigations live in stage 08 (sensitivity band, depth-matched checks,
+expression-matched false-negative floor) and stage 09 (bulk cross-check). **Neither
+bias may be left unquantified, and the headline number is reported as a bracketed
+interval, never a bare point estimate.**
 
-Doublet detection: `scDblFinder` (R) remains the benchmarked best choice per
-`sc-best-practices` (highest accuracy in the Xi & Li 2021 benchmark) — used from
-Python via a deliberately isolated `rpy2` bridge (see Environment below), not
-switched to a pure-Python alternative purely for language purity.
+Doublet detection: **`scDblFinder` (R) via an isolated `rpy2` bridge**, per the
+Xi & Li 2021 benchmark — not swapped for a pure-Python alternative for language purity.
 
----
+## Environments
 
-## Environment / tooling — modular envs per pipeline stage
+**Full specs, build traps and verification: `docs/environments.md`.** Five built, split
+by actual dependency-conflict risk (not one per stage); two exist to quarantine R.
 
-Four environments, split by actual dependency-conflict risk (not one per file). Two of
-them exist to quarantine R — `env-qc` for `scDblFinder`, `env-annotation` for
-`SingleR` — so the pure-Python stack never carries an R dependency it doesn't need:
-
-**`envs/env-qc.yml`** — stage 04 only (loading, QC, doublet detection). Isolates
-the R/rpy2 bridge so no other environment needs to carry R at all.
-```yaml
-name: mm-qc
-channels: [conda-forge, bioconda]
-dependencies:
-  - python=3.12
-  - scanpy=1.11
-  - anndata
-  - pandas
-  - numpy
-  - scipy
-  - seaborn
-  - matplotlib
-  - jupyterlab
-  - ipykernel
-  - r-base=4.3.3
-  - rpy2=3.5.11
-  - bioconductor-scdblfinder=1.16.0
-  - bioconductor-singlecellexperiment
-  - anndata2ri
-```
-(Adapted directly from `sc-best-practices`'s own published environment for this
-exact chapter.)
-
-**`envs/env-core.yml`** — stages 05-10 and 12 (integration, annotation, malignant
-calling, antigen scoring/escape fraction, robustness, subclone/phenotype, decision
-packet — everything except stage 04's QC and stage 11's LIANA+). Shared
-dependencies, no conflicts between them.
-```yaml
-name: mm-core
-channels: [conda-forge, bioconda]
-dependencies:
-  - python=3.12
-  - scanpy=1.11
-  - anndata
-  - harmonypy
-  - leidenalg
-  - python-igraph
-  - celltypist
-  - infercnvpy
-  - pydeseq2          # stage 10 pseudobulk DE (patient as unit of replication)
-  - decoupler         # stage 10 pathway/TF activity (Hallmark/PROGENy/CollecTRI)
-  - pandas
-  - numpy
-  - scipy
-  - scikit-learn
-  - statsmodels       # stages 08/09 regression, bootstrap CIs, confounder models
-  - seaborn
-  - matplotlib
-  - jupyterlab
-  - ipykernel
-```
-
-**`scCODA` is deliberately NOT in `env-core`.** It pulls TensorFlow, which is a
-heavyweight and version-brittle dependency with no relationship to the rest of the
-core stack — exactly the conflict-risk criterion these env splits exist to respect.
-If the compositional analysis (stage 06) is actually run, give it
-`envs/env-composition.yml` with `sccoda` + `anndata` + `ipykernel` only. Do not
-destabilize `mm-core` to save an environment.
-
-**`envs/env-communication.yml`** — stage 11 only (LIANA+). Isolated because
-`liana`/`omnipath`'s dependency tree is version-sensitive and unrelated to the
-core scanpy stack.
-```yaml
-name: mm-communication
-channels: [conda-forge, bioconda]
-dependencies:
-  - python=3.12
-  - liana
-  - omnipath
-  - anndata
-  - scanpy
-  - jupyterlab
-  - ipykernel
-```
-
-**`envs/env-annotation.yml`** — stage 06 only. Isolated for the same reason `env-qc`
-is: `SingleR` is R, and R stays quarantined in the environments that actually need it
-rather than being pulled into `mm-core`.
-```yaml
-name: mm-annotation
-channels: [conda-forge, bioconda]
-dependencies:
-  - python=3.12
-  - scanpy=1.11
-  - anndata
-  - celltypist
-  - r-base=4.3.3
-  - rpy2=3.5.11
-  - bioconductor-singler
-  - celldex
-  - anndata2ri
-  - scikit-learn        # ARI / F1 for the annotation comparison
-  - pandas
-  - seaborn
-  - matplotlib
-  - jupyterlab
-  - ipykernel
-```
-`celltypist` also remains in `env-core` — pure Python, no conflict, and convenient if
-labels ever need re-deriving outside stage 06.
-
-Register a distinct Jupyter kernel per env: `python -m ipykernel install --user
---name mm-qc` (and `mm-core`, `mm-annotation`, `mm-communication`).
-
-**Written and built 2026-08-21** as `envs/env-{qc,core,annotation,communication}.yml`,
-plus `envs/env-composition.yml` which is **written but deliberately not built** — per
-the scCODA note above, it is created on demand only if stage 06's compositional
-comparison is actually run. Three deviations from the specs above, all forced by what
-the channels actually carry (verified against `conda-forge`/`bioconda`, not assumed):
-
-| spec said | reality | resolution |
+| env | stages | why isolated |
 |---|---|---|
-| `infercnvpy` (conda) | **not packaged on any conda channel** | installed via `pip:` inside `env-core.yml` — still REQUIRED, not optional |
-| `celldex` | no such conda package | the R package is `bioconductor-celldex` |
-| `decoupler` (conda) | bioconda is stuck at **1.5.0 (2023)**, pins `numpy<2`, and fails to import under numba 0.67 | `pip: decoupler==2.2.0` in `env-core.yml` |
-| `liana` (conda) | bioconda recipe **under-declares**: `import liana` fails outright | pin `pydantic` + `mudata<0.4` in `env-communication.yml` |
-| (unstated) | notebooks are jupytext-paired in every env | `jupytext` added to all four |
+| `mm-qc` | 04 | `scDblFinder` + `rpy2` — keeps R out of everything else |
+| `mm-core` | 05, 07-10, 12, **tests** | the shared scanpy/pydeseq2/decoupler stack |
+| `mm-annotation` | 06 | `SingleR` + `celldex` — the second R quarantine |
+| `mm-communication` | 11 | `liana`/`omnipath`'s version-sensitive tree |
+| `mm-integration` | 05b | every integration method under comparison + `scib-metrics` |
 
-Every pinned version in the specs does exist and was confirmed before building:
-`scanpy=1.11`, `r-base=4.3.3`, `rpy2=3.5.11`, `bioconductor-scdblfinder=1.16.0`.
+`envs/env-composition.yml` (scCODA) is **written but deliberately not built** — it pulls
+TensorFlow and must not destabilize `mm-core`. Build it only if stage 06's
+compositional comparison is actually run.
 
-**`decoupler` 2.x is an API rewrite** (`dc.mt.*` / `dc.op.*`, not `dc.run_mlm`). Stage 10
-must be written against 2.x — do **not** follow 1.x tutorials, including
-`sc-best-practices`'s, without checking the call names. Downgrading is not an option:
-1.x pins `numpy<2`, which collides with `pydeseq2`/`scipy`/`zarr` in the same env.
+**Two hard rules:**
+1. **Never `pip install` into these envs casually.** Installing `decoupler==1.8.0` once
+   silently downgraded numpy 2.5.2 → 1.26.4 *and* numba, breaking scanpy, scipy,
+   pydeseq2 and zarr at once; the repair was to delete and recreate the env. The two
+   legitimate pip entries (`infercnvpy`, `decoupler==2.2.0`) live in the yml so a
+   rebuild reproduces them. If a pip install is unavoidable, rebuild afterwards.
+2. **`decoupler` 2.x is an API rewrite** (`dc.mt.*` / `dc.op.*`, not `dc.run_mlm`).
+   Stage 10 must be written against 2.x; do not follow 1.x tutorials, including
+   `sc-best-practices`'s. Downgrading is not an option — 1.x pins `numpy<2`.
 
-**Never `pip install` into these envs casually.** Installing `decoupler==1.8.0` during
-setup silently downgraded `numpy` 2.5.2 → 1.26.4 *and* `numba`, breaking `scanpy`,
-`scipy`, `pydeseq2` and `zarr` at once; the repair was to delete and recreate the env
-from the yml. The two legitimate pip entries (`infercnvpy`, `decoupler`) live in the yml
-so a rebuild reproduces them. If a pip install is unavoidable, rebuild the env
-afterwards rather than patching it.
-
-**Verified 2026-08-21 — all four envs import their key packages, both R bridges work:**
-
-| env | verified |
-|---|---|
-| `mm-qc` | scanpy 1.11.5, rpy2 3.5.11, anndata2ri 2.0.1; **R 4.3.3 + scDblFinder 1.16.0 + SingleCellExperiment 1.24.0**, `scDblFinder()` callable |
-| `mm-core` | scanpy 1.11.5, numpy 2.5.2, harmonypy 2.0.0, celltypist 1.7.1, infercnvpy 0.6.1, pydeseq2 0.5.4, decoupler 2.2.0; `cnv.tl.infercnv` + `run_harmony` callable |
-| `mm-annotation` | celltypist 1.7.1, rpy2 3.5.11; **R 4.3.3 + SingleR 2.4.0 + celldex 1.12.0**, both `NovershternHematopoieticData` and `HumanPrimaryCellAtlasData` present |
-| `mm-communication` | liana 1.8.1 with **both `liana.mt.cellchat` and `liana.mt.rank_aggregate`**, omnipath 1.0.12 |
-
-Kernels registered for all four (`mm-qc`, `mm-core`, `mm-annotation`, `mm-communication`)
-— plus `mm-integration` on 2026-08-24 (stage 05b),
-each kernelspec confirmed to point at its own interpreter.
-
-**Note `mm-communication` deliberately runs a different scanpy/anndata** (1.12.3 /
-0.12.19) from the other three (1.11.5 / 0.13.2) — the spec leaves scanpy unpinned there,
-and pinning it would over-constrain liana's already version-sensitive tree. Stage 11
-reads `.h5ad` written by `mm-core`, so the two only meet on disk; if a forward/backward
-`.h5ad` compatibility problem ever appears, that version gap is the first place to look.
-
-**`envs/env-integration.yml`** — stage 05b only (the integration-method benchmark).
-**Built 2026-08-24**, fulfilling the reservation this section previously carried ("if
-scVI-based integration is ever considered as an alternative to Harmony, it gets its own
-separate env (`env-scvi.yml`) — not created yet, only if actually needed"). It is named
-for what it holds rather than for one member: **every** integration method under
-comparison lives here, plus the scoring stack — `harmonypy` (the incumbent, which must
-run beside its rivals), `scvi-tools`, `scanorama`, `bbknn`, `scib-metrics`, and
-`celltypist` for the benchmark's provisional labels.
-
-Verified: torch **2.13.0+cu130**, CUDA available, RTX 5070 at compute capability
-**12.0 (Blackwell / sm_120)**; scvi-tools 1.5.0, scib-metrics 0.6.0, scanorama 1.7.4,
-bbknn 1.6.0, celltypist 1.7.1, harmonypy 2.0.0; scanpy 1.11.5 and **anndata 0.13.2,
-matching `mm-core` exactly** so the stage-05 `.h5ad` reads without a version gap.
-
-Two build traps, both hit for real:
-- **`cxx-compiler` is load-bearing.** Scanorama depends on `annoy`, which publishes no
-  cp312 wheel and builds from source. Without a compiler *in the env* the pip stage
-  dies with `error: [Errno 2] No such file or directory: 'g++'` and takes the whole env
-  with it. There is no system `g++` on this machine and conda-forge's `python-annoy` is
-  py39-only, so the compiler has to come from the env itself.
-- **`bbknn` is installed but not scored.** `scib-metrics`' `Benchmarker` scores `obsm`
-  embeddings; BBKNN yields a corrected neighbour *graph* and no embedding, so it cannot
-  be placed on the same footing. It is installed anyway because it is small and pure
-  Python, keeping a graph-only side diagnostic possible.
-
----
+Note `mm-communication` deliberately runs a different scanpy/anndata (1.12.3 / 0.12.19)
+from the others (1.11.5 / 0.13.2). Stage 11 meets `mm-core` only on disk; if an `.h5ad`
+compatibility problem ever appears, that version gap is the first place to look.
 
 ## Code structure — notebooks for every stage + a modular `src/` package
 
@@ -923,62 +391,31 @@ no stage you cannot open and step through:
 | 11 | `notebooks/11_cellchat_liana.ipynb` | `mm-communication` | `results/11_communication/` |
 | 12 | `notebooks/12_decision_packet.ipynb` | `mm-core` | `results/12_decision_packet/` |
 
-**Number order IS execution order** — 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12,
-with no exceptions. When the 2026-08-20 scope expansion added two stages, the
-sequence was renumbered rather than appended to, precisely so this invariant holds:
-escape robustness took 09 and subclone/phenotype took 10 (both run right after the
-escape fraction they interrogate), pushing cell-cell communication to 11 and the
-decision packet to 12, which consumes everything upstream and therefore stays last.
-Do not reintroduce a stage whose number and run position disagree.
+**Number order IS execution order** — 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12, with
+no exceptions. The scope expansion renumbered the sequence rather than appending to it,
+precisely so this holds. **Never add a stage whose number and run position disagree.**
 
-Each `results/NN_*/` subdirectory holds everything that stage produces (figures,
-CSVs, checkpointed AnnData `.h5ad` files) — no more flat, ad hoc filenames in a
-single `results/` dump like the R build had. **Phase 2's notebooks/results use a
-`phase2_NN_*` prefix**, never plain `NN_*`, so the two phases are never
-ambiguous on disk or in `results/`.
+Each `results/NN_*/` holds everything that stage produces (figures, CSVs, checkpointed
+`.h5ad`) — no flat ad hoc filenames in one `results/` dump like the R build had.
+**Phase 2 uses a `phase2_NN_*` prefix**, never plain `NN_*`.
 
-Notebooks are **paired with `jupytext`** (percent format) for git-diffability and
-Codex review. The `.ipynb` is gitignored and generated from the committed `.py` — see
-`.gitignore`, which documents how to flip that if you'd rather commit notebooks with
-`nbstripout`.
+Notebooks are **paired with `jupytext`** (percent format); the `.ipynb` is gitignored
+and generated from the committed `.py` (see `.gitignore` for how to flip that).
 
-**Division of labour between notebook and package.** Notebooks are the analysis: they
-carry the narrative, the plots, the intermediate inspection, and the reasoning a reader
-steps through. `src/mm_escape/` holds the parts that earn being a library —
-**reusable** (used by more than one stage), **testable** (worth asserting on
+**Division of labour.** Notebooks are the analysis — narrative, plots, intermediate
+inspection, the reasoning a reader steps through. `src/mm_escape/` holds what earns
+being a library: **reusable** (more than one stage), **testable** (worth asserting on
 independently), or **fiddly** (the `read_mtx` loader, symbol harmonization, the
-noise-floor derivation). The test is reuse and testability, not line count: a
-single-use plotting call belongs in the notebook, and duplicating a threshold
-calculation across three notebooks does not.
+noise-floor derivation). The test is reuse and testability, **not line count** — a
+single-use plotting call belongs in the notebook; a threshold calculation duplicated
+across three notebooks does not. This protects two things: Codex reviews `.py` diffs
+rather than notebook JSON, and logic with one home cannot drift between copies — which
+is exactly what made `mm_dual_antigen_escape_pipeline.md` go stale once already.
 
-Two things this protects, and the reason the split exists at all: Codex reviews `.py`
-diffs rather than notebook JSON, and logic with one home cannot drift between copies —
-which is exactly what made `mm_dual_antigen_escape_pipeline.md` go stale once already
-during the R build.
-
-**The whole analysis runs in notebooks, stages 01 through 12.** Decided 2026-08-20:
-every stage is openable and steppable, with nothing hidden behind a bare CLI script.
-
-`scripts/01_download_data.sh`, `02_check_files.sh`, `03_build_manifest.py` are
-**retained as a CLI fallback**, not deleted — they are already solved and verified, they
-work headlessly (useful for a fresh clone, a remote box, or CI), and the stage 01-03
-notebooks call into them rather than reimplementing them. Do not rewrite the scripts;
-the CLI remains a valid path and its output is the contract.
-
-**Notebooks 01-03 wrap the scripts; they must not duplicate their logic.**
-`notebooks/03_build_manifest.py` is the reference pattern: it imports `build_manifest()`
-from `scripts/03_build_manifest.py` by file path and writes the manifest on the script's
-exact column schema, so the two produce byte-identical output (verified both
-directions). It adds what a notebook is *for* — the Cell Ranger reference split, a
-symbol-harmonized intersection preview, and the required-gene assertions that caught the
-`NSD2` drift. Two implementation traps it documents, both hit for real:
-- Under a Jupyter kernel `sys.argv[1]` is `-f`, so the script's module-level `RAW_DIR`
-  evaluates to `Path('-f')`. **Always pass paths explicitly**; never use `mf.RAW_DIR`.
-- The manifest must hold **repo-root-relative** paths (it is committed and read on other
-  machines), so the notebook normalizes the absolute paths it must pass in.
-
-Its `n_genes_ref` diagnostic is intentionally **not** persisted: adding a column would
-break schema parity with the script.
+**`scripts/01-03` are retained as a headless CLI fallback**, not deleted — already
+solved and verified, useful on a fresh clone or in CI. Notebooks 01-03 **call into
+them** and must never reimplement them; the scripts' output is the contract and
+byte-identical parity is verified both directions.
 
 ---
 
@@ -993,525 +430,211 @@ break schema parity with the script.
 - Every module in `src/mm_escape/` should be reviewable and lightly testable
   independent of any notebook.
 
-**The test suite lives in `tests/` and runs in `mm-core`** (`pytest`, config in
-`pyproject.toml`). It is deliberately **two-tier**:
-
 - **Most tests need no data at all.** The things most worth protecting — the
-  Ensembl-ID join, the `make.unique` reimplementation, the `56203_1` truncation
-  repair, the required-gene assertions, the GEO metadata join — are exercised entirely
-  by what is committed under `resources/`. On a fresh clone with no `raw/`:
-  **100 pass, 57 skip.**
-- **Data-backed tests are gated on `raw/` and skip rather than fail**, via
-  `conftest.requires_data`. With the deposit present: **155 pass, 2 skip, ~27 s.**
-  Two further gates were added later: `requires_s1` (Supplementary Table S1 is a
-  journal file, not part of the GEO deposit) and `requires_r` (scDblFinder lives
-  only in `mm-qc`, and the suite's home `mm-core` carries no R).
+  Ensembl-ID join, the `make.unique` reimplementation, the `56203_1` truncation repair,
+  the required-gene assertions, the GEO metadata join — are exercised entirely by what
+  is committed under `resources/`.
+- **Data-backed tests are gated and skip rather than fail** (`conftest.requires_data`,
+  `requires_s1`, `requires_r`). `pytest -m "not slow"` skips the two full-cohort passes.
 
-`pytest -m "not slow"` skips the two full-cohort passes. Data-backed tests run over
-the four canonical samples in `conftest.CANONICAL_SAMPLES`, chosen because they cover
-the deposit's failure modes — `MMRF_1695` (33538 build), `27522_1` (33694, legacy
-symbols), `BM4` (donor), `56203_1` (truncated). Add cases there rather than picking
-new samples ad hoc.
+Data-backed tests run over the four canonical samples in `conftest.CANONICAL_SAMPLES`,
+chosen because they cover the deposit's failure modes — `MMRF_1695` (33538 build),
+`27522_1` (33694, legacy symbols), `BM4` (donor), `56203_1` (truncated). **Add cases
+there** rather than picking new samples ad hoc.
 
-Assertions encode the cohort's known invariants (204,040 pre-QC cells, 32,991
-intersected genes, 11,140 drifted symbols, 26 matched bulk samples, the per-cohort
-depth ordering), so a regression in the loader, the gene map or the metadata tables
-fails loudly instead of quietly changing a number.
+Assertions encode the cohort's known invariants (204,040 pre-QC cells, 172,940 post-QC,
+32,991 intersected genes, 11,140 drifted symbols, 26 matched bulk samples, the
+per-cohort depth ordering), so a regression in the loader, the gene map or the metadata
+tables fails loudly instead of quietly changing a number. Current counts and gate
+details: `docs/stage-results.md`.
 
 ---
 
 ## Pipeline stages (numbers match notebook filenames and result directories)
 
-**01-03 — Data acquisition** (`notebooks/01_download_data.ipynb`,
-`02_check_files.ipynb`, `03_build_manifest.ipynb`; env: `mm-qc`). Notebooks wrapping the
-verified `scripts/01-03`, which remain as a CLI fallback. Status: **all three written,
-executed and passing (01/02 added 2026-08-21)** — 62/62 `triplet-ok`, manifest
-byte-identical via both paths, all assertions green.
+**Stages 01-05b are RUN.** The blocks below say what each produced and what it binds
+downstream. **Full run output, tables and figures: `docs/stage-results.md`**, and the
+`results/*.csv` files are the source of truth over any table reproduced anywhere.
 
-Scripts 01 and 02 are **bash**, so their notebooks `subprocess` out to them rather than
-importing a function as notebook 03 does — that is what "wrap, don't duplicate" means
-for a shell script. Notebook 02 parses the script's classification table into a
-DataFrame for assertions, but never re-derives the classification itself.
+**01-03 — Data acquisition** (`mm-qc`) — **RUN.** 62/62 `triplet-ok`; manifest
+byte-identical via notebook and CLI. Notebooks **wrap** `scripts/01-03` (bash ones via
+`subprocess`, `03` by importing `build_manifest()`) and must never reimplement them —
+the scripts are the contract and are kept as a headless fallback.
+- **Only 3 distinct `genes.tsv` checksums exist across 62 files.** That is what makes
+  the Ensembl-ID reconstruction possible; notebook 02 asserts exactly 3, so a new
+  reference build fails loudly instead of merging silently.
+- **Under a Jupyter kernel `sys.argv[1]` is `-f`**, so the script's module-level
+  `RAW_DIR` evaluates to `Path('-f')`. Always pass paths explicitly; never use
+  `mf.RAW_DIR`. The manifest holds **repo-root-relative** paths.
 
-Each adds what a notebook is for. **01**: a pre-flight stating whether the run will
-download or skip (so a 1 GB transfer is never started by accident), post-conditions on
-the 62 sample dirs and their `.extraction_complete` markers, and the bulk inventory
-assertion that caught the 12-vs-13 WashU error above. **02**: assertions on the
-`triplet-ok` classification, the reference split, a manifest-vs-disk cross-check, and
-the **checksum finding** — 62 `genes.tsv` files, only **3 distinct checksums**, which is
-the fact that makes the Ensembl-ID reconstruction in `gene_space.py` possible at all. It
-asserts exactly 3, so a new reference build fails loudly instead of being merged
-silently. **03** reports the reference split and runs the required-gene assertions
-(which is how the `NSD2`/`WHSC1` symbol drift was found).
+**04 — QC + doublets** (`mm-qc`) — **RUN.** 204,040 → **172,940 cells (84.8%)** over
+all 62 samples. Per-cohort MAD thresholds, `scDblFinder` on every sample, one
+checkpoint per sample under `results/04_qc/samples/` with **every barcode retained**
+and `obs["keep"]` set. Removal is stable from 4 to 6 MADs (16.5% → 14.6%), so nothing
+downstream hangs on the exact count.
+- **Binds downstream:** the deposit's per-cohort pre-filtering (see Data above) is
+  quantified here — `results/04_qc/umi_censoring_effect.csv`. Stage 08 **owes** the
+  truncate-all-cohorts-at-10k sensitivity analysis. Not corrected at stage 04, because
+  matching MMRF to WashU would discard 42% of MMRF's cells to make every cohort equally
+  damaged.
 
-Note notebook 03's kernelspec said `mm-dual-antigen` (an R-build leftover) and was
-repointed to `mm-qc` on 2026-08-21, matching the env this stage actually declares.
+**05 — Gene-space intersection, integration, clustering** (`mm-core`) — **RUN.**
+172,940 × **32,991 genes**, 30 Leiden clusters → `results/05_integration/integrated.h5ad`.
+Gene space landed exactly as predicted: 22,164 on symbols → 32,991 on Ensembl IDs,
+11,140 drifted symbols joined correctly, `NSD2` resolving against `WHSC1`. CP10K +
+`log1p` with raw integers in `layers["counts"]`; 2,000 HVGs with `batch_key="patient_id"`;
+50 PCs. **Peak ~20 GB RAM — the one stage that concatenates the matrices, and therefore
+the project's machine-size constraint.**
+- **Harmony works on the immune compartment (cohort-mixing entropy 0.751) and does NOT
+  work on the plasma compartment (0.105).** The three largest plasma clusters are one
+  per cohort, each spanning ~30 patients — which rules out a patient-private clone
+  (that would fragment into ~41 clusters, not three cohort-shaped ones).
+- **This is the stage-04 censoring, measured rather than inferred.** Median UMIs in the
+  plasma compartment: MMRF 22,477 vs WU1 5,036 (**4.5×**, against 1.8× for non-plasma).
+  MMRF's two largest plasma clusters have 68% and 88% of cells above 10,000 UMIs —
+  cells the WashU deposits *cannot contain*. WashU's plasma clusters instead press up
+  against the ceiling. **No one-to-one population correspondence remains for any method
+  to recover, and no correction restores cells that were never deposited.**
+- **Forbidden:** reading any cross-cohort comparison of malignant-cell state off this
+  embedding. **Contained by design:** the embedding feeds only stages 06 and 11;
+  per-cell antigen calls read `layers["counts"]` and are integration-independent; stage
+  10's malignant subclustering is per-patient and un-integrated. This is the answer to
+  "did Harmony distort your escape fractions?" — it cannot.
+- **`GPRC5D` is not a highly variable gene** (mean 0.061 vs `TNFRSF17` 0.492; HVG in 6
+  of ~50 patients). This affects nothing mechanically — its value is **evidential**, as
+  this cohort's own first number behind the dropout-asymmetry argument. The antigen
+  panel is deliberately **not** forced into the HVG set.
 
-**04 — QC + doublets** (`notebooks/04_qc.ipynb`, `src/mm_escape/qc.py`; env:
-`mm-qc`). Custom loader (handles `counts.mtx`/`genes.tsv` naming). QC metrics via
-`scanpy.pp.calculate_qc_metrics` including `pct_counts_in_top_20_genes`. MAD-based
-outlier filtering, re-derived per this cohort. `scDblFinder` via the `rpy2`
-bridge. **MAD thresholds are derived per cohort, not pooled** — MMRF cells carry ~1.9x
-the genes/cell of WU1's, so a pooled MAD would flag much of WashU cohort 1 as
-low-quality for a batch reason (see the GEO metadata section). `56203_1` is loaded with
-its repaired gene column, not excluded. Checkpoint each sample's post-QC AnnData
-individually (mirrors the R build's resumable-per-sample design).
+**05b — Integration-method benchmark** (`mm-integration`) — **RUN. The incumbent
+survived; nothing about stage 05's output changed.** Seven arms (unintegrated; Harmony
+/ scVI / Scanorama on `sample_name`; the stage-05 incumbent; Harmony / scVI on
+`cohort`) scored with `scib-metrics` against provisional CellTypist labels. It reads
+`integrated.h5ad` read-only and asserts byte-identity afterwards.
+- **It takes a letter, not a number**, because number order is execution order with no
+  exceptions and this is a side-comparison feeding the stage-05 *choice*.
+- **The scoring is deliberately not standard scIB, and that design point matters more
+  than the leaderboard.** scIB's batch metrics cannot distinguish *correctly left apart*
+  from *failed to merge*, so on this dataset a naive global ranking **structurally
+  rewards overcorrection**. Therefore the immune compartment is **scored** and the
+  plasma compartment is only **diagnosed** — plasma mixing never contributes positively.
+- **The failure mode this design was built to catch actually occurred.** A standard
+  global scIB benchmark would have selected `harmony_sample` (best batch **and** bio
+  scores) — which mixes plasma **13.5×** harder than the incumbent while encoding more
+  depth; `harmony_cohort` reaches **20.2×**.
+- **The incumbent is the worst batch corrector of the seven (0.427, below unintegrated's
+  0.450)** and by a wide margin the least depth-encoding (R² **0.369** vs 0.51-0.69) and
+  least plasma-merging (**0.038**). Correcting on `patient_id` + `n_genes_ref` + `cohort`
+  trades cohort mixing for exactly the properties this dataset needs. **This finding
+  exists only because the incumbent was entered as its own arm rather than assumed.**
+- **Stated honestly: `depth_ok` did all the gating**, at a +0.05 tolerance fixed before
+  the spread was known. Two things keep that from being a threshold artifact — three
+  arms independently fail `overcorrection_ok` and lose even with the depth criterion
+  removed, and relaxing depth enough to admit anything admits only the two weakest batch
+  performers. **The tolerance is not re-tuned after the fact**; doing so is exactly the
+  post-hoc rationalisation pre-declaration exists to prevent.
+- **Propagate to stage 08: no integration method restores cells that were never
+  deposited.** A well-mixed latent space has not undone the ascertainment bias in the
+  raw counts stage 08 reads. The truncate-all-at-10k sensitivity analysis is still owed,
+  and selecting a fancier method must never create the impression the censoring was
+  "handled".
 
-**RUN AND COMPLETE 2026-08-24.** 204,040 pre-QC cells over all 62 samples ->
-**172,940 kept (84.8%)**. `results/04_qc/` holds the thresholds, the per-sample and
-per-cohort reports, the MAD sensitivity sweep, three figures, and one checkpoint per
-sample under `samples/` with **every barcode retained** and `obs["keep"]` set — cells
-are annotated, never deleted, so stage 08 can ask what QC cost. The stage runs in two
-passes: per sample (metrics + `scDblFinder`, ~210 s for the cohort) then per cohort
-(MAD thresholds, ~11 s, off `obs` alone — it never concatenates the matrices).
-
-Two things the data forced, both departures from what this section originally
-specified, and both made on this cohort's numbers rather than on preference:
-
-1. **`pct_counts_in_top_20_genes` is computed and reported but does NOT filter.**
-   A 5-MAD band on it flags 17% of MMRF and 15% of WU1 against 3% of WU2 — too uneven
-   to be catching one thing. Inspecting those cells (MMRF_1695, top decile) shows two
-   populations: `IGKC` at ~25% of counts (plasma cells) and `HBB`/`HBA1/2` at ~32%
-   (erythroid debris). The plasma-cell half is the project's subject — `TNFRSF17`
-   detected in **21.8%** of that decile vs **0.8%** elsewhere, `SDC1` **18.8%** vs
-   **0.0%**. A plasma cell is a professional secretor; an Ig-dominated library is its
-   normal state, not a defect. Filtering on it would preferentially delete
-   antigen-**positive** malignant cells and inflate `frac_double_negative`. The metric
-   is kept because it is one of the few ambient-Ig handles available at all (SoupX
-   needs unfiltered matrices this deposit lacks) — it is just not allowed to delete
-   cells. See `qc.DEFAULT_FILTERS` vs `qc.ALL_FLAGS`; opting it back in is one
-   explicit argument, for a sensitivity re-run.
-2. **The deposit is already filtered, differently per cohort — see the correction
-   below.**
-
-Thresholds this cohort actually produced (`results/04_qc/qc_thresholds.csv` has all of
-them; `pct_counts_mt` is one-sided because a cell with unusually *few* mitochondrial
-reads is not low quality):
-
-| cohort | log1p_total_counts band | pct_counts_mt cap | % removed |
-|---|---|---|---|
-| MMRF | [4.24, 13.60] (MAD 0.94) | 12.6% (never binds — see below) | 4.7% |
-| WU1 | [6.10, 10.24] (MAD 0.41) | 8.6% | 14.1% |
-| WU2 | [5.83, 10.37] (MAD 0.45) | 12.9% | 18.0% |
-| Donor | [6.37, 10.08] (MAD 0.37) | 11.7% | 22.6% |
-
-MMRF's band is ~2x wider than the others' because its own depth distribution is much
-more dispersed, so at 5 MADs it removes nothing but doublets. The removal rate is
-stable from 4 to 6 MADs (16.5% -> 14.6% overall), so nothing downstream hangs on the
-exact count. `min_genes = 200` flags nothing — deliberately, it is a safety net, and a
-higher floor would hit the shallow cohorts hardest.
-
-**CORRECTION — the deposit IS pre-filtered, and differently in each cohort.** An
-earlier note in this project held that the depositors' stated Seurat filter (drop
-cells above 10,000 UMIs) "was not applied to what is deposited", reasoning from a
-cohort-wide average UMI count. That average pooled MMRF with WashU and hid a
-per-cohort truth. Read per cohort the boundaries are unmistakable — a `max` of exactly
-9,999 or 10.00 is a cutoff, not a distribution:
-
-| cohort | UMI ceiling | UMI floor | pct_mt ceiling | gene floor |
-|---|---|---|---|---|
-| WU1, WU2 | **< 10,000** | >= 1,000 | < 20% | >= 200 |
-| MMRF | none (max ~269,000) | >= 1,000 | **< 10%** | >= 200 |
-| Donor | none (max ~119,000) | none | < 20% | >= 200 |
-
-**This is a first-order problem for stage 08, not bookkeeping.** Malignant plasma
-cells are the highest-RNA-content cells in marrow, so a 10,000-UMI ceiling does not
-remove a random slice. Measured in the uncensored cohorts, where the band is still
-visible, cells above 10,000 UMIs are enriched **3-21x for `TNFRSF17`** and **20-70x
-for `GPRC5D`** (`results/04_qc/umi_censoring_effect.csv`). So **36 of the 54 myeloma
-samples had the antigen-positive tail of their own tumours removed before deposit**,
-which inflates `frac_double_negative` for WU1/WU2 relative to MMRF — a bias in the
-project's own direction of interest, and one that is baked in and cannot be undone.
-
-Deliberately **not** corrected at stage 04. Truncating MMRF and Donor to match would
-discard 42% of MMRF's cells to make every cohort equally damaged; QC's job is to
-remove bad cells, not destroy good ones to equalise two cohorts. It is carried forward
-as a quantified confounder, and **stage 08 must run the truncate-everything-at-10k
-version as a sensitivity analysis**, where it costs nothing and answers the question
-directly. Note this also means the "1.9x cohort depth gap" documented above is partly
-*censoring*, not only chemistry.
-
-**05 — Gene-space intersection, integration, clustering**
-(`notebooks/05_integration_clustering.ipynb`, `src/mm_escape/gene_space.py` +
-`integration.py`; env: `mm-core`). **Canonicalize gene symbols first, then** intersect
-gene sets across retained samples (hard-fail with specifics if required genes don't
-survive). The harmonization step is not optional — see the Data section's symbol-drift
-table; without it `NSD2` is dropped and stage 10 loses t(4;14) entirely. Report how many
-genes the harmonization recovers, so a regression here is visible rather than silent.
-`anndata.concat(join="inner")`. Normalize, HVG, PCA, `harmonypy` keyed on
-`patient_id` **with `n_genes_ref` AND `cohort` as additional covariates** — the build
-and the cohort are different axes and neither substitutes for the other (two WU1
-samples sit on the 33538 build, the four `ND_*` donors on 33694), Leiden clustering,
-UMAP. Diagnostic UMAP colored by reference version (`n_genes_ref`) to confirm the
-intersection actually neutralized processing batch. **This three-covariate Harmony
-configuration was benchmarked against six alternatives at stage 05b (2026-08-24) and
-retained** — it is now a tested choice rather than a default.
-
-**RUN AND COMPLETE 2026-08-24.** 172,940 cells x **32,991 genes**, 30 Leiden
-clusters, `results/05_integration/integrated.h5ad` (1.3 GB gzipped). Whole pipeline
-~190 s, **peak ~20 GB RAM** — the one stage that actually concatenates the matrices,
-so it is the machine-size constraint for the project. Gene space came out exactly as
-`gene_space.py` predicted: 22,164 on raw symbols -> **32,991 on Ensembl IDs
-(+10,827)**, 11,140 drifted symbols joined correctly, all required genes present with
-`NSD2` resolving against `WHSC1` in the older build.
-
-**Harmony works on the immune compartment and does NOT work on the plasma-cell
-compartment — and that is the stage-04 censoring showing up a second time.** Median
-per-cluster cohort-mixing entropy:
-
-| | clusters | cells | median entropy by cohort |
-|---|---|---|---|
-| plasma-cell-like (`MZB1` > 40%) | 11 | 39,893 | **0.105** |
-| everything else | 19 | 133,047 | **0.751** |
-
-(Uncorrected PCA for reference: 0.341 median over 54 clusters, 34 of them below 0.5.
-Harmony: 0.621 over 30, 13 below 0.5. The correction is doing real work — it is just
-doing it unevenly across compartments.)
-
-The three largest plasma-cell clusters are **one per cohort**, each spanning ~30
-patients. That rules out the benign explanation: a patient-private clone would
-fragment into ~41 clusters, not three cohort-shaped ones. The likely cause is the
-stage-04 finding — WashU was cut at 10,000 UMIs and MMRF was not, plasma cells are
-the highest-RNA-content cells in marrow, so **WashU's plasma cells are a truncated
-subset of the plasma-cell distribution** and no batch-correction method can restore
-cells that were never deposited. It is compartment-specific for the same reason:
-T/NK/myeloid/B cells sit well below 10,000 UMIs everywhere, so the ceiling never
-touched them.
-
-**Contained, not fatal** — and contained by decisions made before it was observed:
-per-cell antigen calls are raw counts and never touch this embedding; stage 10's
-malignant subclustering is per-patient and un-integrated; stage 06 annotates at
-cluster level, where three cohort-specific plasma-cell clusters all annotate as
-PlasmaCell at no cost. **What it does forbid: reading any cross-cohort comparison of
-malignant-cell state off this embedding.** And it makes stage 08's cohort covariate
-and the truncate-all-at-10k sensitivity analysis mandatory rather than advisable —
-this is the second independent sign of the same problem.
-
-**Preprocessing, and two findings from reporting it.** CP10K + `log1p` with raw
-integers kept in `layers["counts"]`; 2,000 HVGs of 32,991 selected with
-`batch_key="patient_id"` (median HVG is variable in 15 of ~50 patients, min 10, so the
-selection is not one cohort's artefact); scale + PCA to 50 components on a throwaway
-HVG-subset copy, so `X` stays unscaled and complete. 50 PCs is 28.4% of variance and
-PCs 31-50 add only 2.7 points, so the count is generous rather than load-bearing.
-
-1. **`GPRC5D` is not a highly variable gene** — mean **0.061** against `TNFRSF17`'s
-   **0.492**, an 8x gap, and HVG in only 6 patients. This affects nothing: the
-   embedding does not need it to find plasma cells, and stage 08 reads
-   `layers["counts"]`. **Its value is evidential.** This document argues repeatedly
-   that dropout matters more for GPRC5D than for BCMA because GPRC5D is a low-abundance
-   GPCR transcript; that has been an assertion from the literature, and this is the
-   first number from *this cohort* supporting it. A materially higher share of
-   "GPRC5D-negative" calls will be technical zeros, so **GPRC5D-negative calls warrant
-   more scepticism than BCMA-negative ones** — which is what stage 08's
-   expression-matched false-negative floor exists to quantify. The antigen panel is
-   deliberately **not** forced into the HVG set: that would bias the embedding toward
-   the genes under study for no gain.
-
-2. **The plasma-cell integration failure IS the stage-04 censoring, now measured
-   rather than inferred.** Median UMIs per cell, split by compartment:
-
-   | compartment | MMRF | WU1 | WU2 | MMRF/WU1 |
-   |---|---|---|---|---|
-   | non-plasma | 5,829 | 3,273 | 2,879 | **1.8x** |
-   | plasma-like | 22,477 | 5,036 | 4,888 | **4.5x** |
-
-   MMRF's two largest plasma-cell clusters have **68%** and **88%** of their cells
-   above 10,000 UMIs — cells the WashU deposits cannot contain, because WashU was cut
-   at that ceiling. WashU's plasma clusters instead press up against it (7.5-8.3% of
-   cells in the 9,000-9,999 band, against 1.2% for MMRF's cluster 7). So Harmony is not
-   failing on plasma cells: what separates them is a **non-recoverable
-   sampling/censoring asymmetry**, not established biology. WashU's *observed*
-   plasma-cell distribution is missing its high-RNA portion, so **no one-to-one
-   population correspondence remains for any method to recover**, and no correction
-   restores cells that were never deposited. (An earlier wording here said "the
-   populations genuinely differ", which implied biological divergence between cohorts
-   and claimed more than the data supports.) The compartment-specificity follows: T/NK/myeloid/B sit well
-   below 10,000 UMIs everywhere, so the ceiling never touched them, and Harmony mixes
-   them to 0.75. `results/05_integration/depth_by_compartment.csv` and
-   `plasma_cluster_depth.csv`; two regression tests pin the asymmetry.
-
-One defect found and fixed: `gene_space.to_canonical_symbols` named the `var` index
-`canonical_symbol` while also keeping a `canonical_symbol` column holding the
-*unsuffixed* symbol, which differs for the 9 collision-resolved genes. AnnData
-refuses to write such an index, so this failed only at `write_h5ad` — after every
-in-memory test had passed. The index is now named `symbol`, and
-`tests/test_integration.py` round-trips through `.h5ad` so a serialization-only bug
-cannot hide again.
-
-**Constrain integration's blast radius (new).** Harmony keyed on `patient_id` is
-correct for the immune compartment but carries a real risk for the tumor: the
-malignant clone is *patient-private by definition*, so forcing patients together
-can blend genuinely distinct clones into one blob and erase the heterogeneity this
-project exists to measure. Therefore:
-- Integrated embedding is used for **immune-compartment annotation and clustering
-  only** (stages 06, 11).
-- **All malignant subclustering is done per patient, un-integrated** (stage 10
-  depends on this and must not read the Harmony embedding).
-- State explicitly in the notebook that **per-cell antigen calls are raw counts and
-  are therefore integration-independent** — this is what contains the risk, and it
-  is the answer to "did Harmony distort your escape fractions?" (it cannot; the
-  calls never touch the embedding).
-
-**05b — Integration-method benchmark** (`notebooks/05b_integration_benchmark.ipynb`,
-`src/mm_escape/benchmark.py`; env: **`mm-integration`**). Added 2026-08-24.
-`results/05b_benchmark/`.
-
-**Why `05b` and not a number.** Number order is execution order with no exceptions.
-This is a side-comparison feeding the stage-05 *choice*, not a new pipeline stage, so
-it takes a letter rather than displacing annotation. It reads
-`results/05_integration/integrated.h5ad` **read-only** and asserts the file is
-byte-identical afterwards; candidate embeddings live in `05b_benchmark/` until a winner
-is picked.
-
-**Why it exists.** Stage 05 used Harmony because it was the obvious default, never
-because it beat anything. `sc-best-practices`' integration chapter recommends running
-several methods and scoring them with scIB rather than assuming one wins.
-
-**Why the scoring is deliberately NOT standard scIB — the design point that matters
-more than the leaderboard.** scIB's batch metrics cannot distinguish *"correctly left
-apart"* from *"failed to merge"*. Given stage 04's censoring, a method that squashes
-the three plasma islands together scores better on kBET/iLISI while manufacturing
-correspondence where none is recoverable. **A naive global ranking would structurally
-reward overcorrection on this dataset.** Therefore:
-
-- **The immune compartment is scored; the plasma compartment is diagnosed.** Global
-  scIB is computed and reported as a **secondary reference, never used for selection**.
-- Plasma mixing **never contributes positively**. A jump alone flags an arm for
-  inspection; a jump **together with** rising depth association disqualifies it, that
-  pair being the signature of the censoring being smoothed over.
-
-**Arms — one common batch key, plus reference arms.** All scored on `cohort` regardless
-of what they corrected on: with three different batch definitions in play, scoring each
-against its own key would compare seven different *questions* rather than seven
-*methods*. `cohort` is the common axis, samples nest inside it, and it is where the
-demonstrated distortion lives.
-
-| arm | corrects on |
-|---|---|
-| `unintegrated` | — (`X_pca`, same HVGs/scaling/PCs) |
-| `harmony_sample`, `scvi_sample`, `scanorama_sample` | `sample_name` |
-| `harmony_stage05` *(incumbent)* | `patient_id` + `n_genes_ref` + `cohort` |
-| `harmony_cohort`, `scvi_cohort` | `cohort` |
-
-`sample_name` is the true technical unit, but **42 of 50 patients contribute exactly
-one sample**, so `sample_name` and `patient_id` are nearly the same partition and
-"avoid correcting on patient" is weaker than it looks. **`cohort` is the only batch
-definition not confounded with patient**, which is why it is a real arm.
-
-**Labels are provisional CellTypist, deliberately embedding-independent.** scIB scores
-batch removal *against* bio conservation, and the bio half needs labels — which come
-from stage 06, which consumes the embedding under selection. CellTypist breaks that
-circle by classifying from expression. **`majority_voting=False` is load-bearing**:
-majority voting smooths over an over-clustering, which would smuggle an embedding back
-into the labels. Two things were checked rather than assumed:
-- **`Immune_All_High`'s `ILC` class is NK** (8% of marrow; NKG7 98.7%, GNLY 92.2%,
-  KLRD1 85.9%, MS4A1 1.3%).
-- **It does cover erythroid and HSPC here**, contrary to the expectation recorded
-  elsewhere in this document that an immune-only reference would be blind to them
-  (Erythroid 14,103 cells at HBB 99.7%; HSC/MPP 2,625 at CD34 58.4%). So **no hand-set
-  marker thresholds enter the benchmark at all.**
-
-**The decision rule is declared before running** (`benchmark.DECISION_TOLERANCES`),
-exactly as stage 06 pre-declares its F1 thresholds. A method replaces the incumbent only
-if all four hold: `batch_improved`, `bio_preserved`, `depth_ok`, `overcorrection_ok`.
-The verdict is **computed, not narrated** — `decision.csv` is the source of truth and
-`decision.md` is rendered from it. **Harmony is allowed to win**, including against a
-higher conventional global scIB score.
-
-`depth_ok` uses **`R²(log1p(total_counts) ~ latent)`**, fixed in advance. R² depends
-only on the embedding's **column span** and is therefore **rotation-invariant** — latent
-axes are arbitrary across methods, so a per-dimension `max |Spearman|` would rank
-methods on an accident of their parameterisation.
-
-**PRIMARY RESULT (immune compartment, scored on `cohort`):**
-
-| arm | batch correction | bio conservation | total |
-|---|---|---|---|
-| unintegrated | 0.450 | 0.691 | 0.595 |
-| **`harmony_sample`** | **0.615** | **0.718** | **0.677** |
-| `scvi_sample` | 0.570 | 0.701 | 0.649 |
-| `scanorama_sample` | 0.450 | 0.723 | 0.614 |
-| **`harmony_stage05` (incumbent)** | **0.427** | 0.700 | 0.591 |
-| `harmony_cohort` | 0.591 | 0.706 | 0.660 |
-| `scvi_cohort` | 0.492 | 0.690 | 0.611 |
-
-**The headline is about configuration, not method.** Harmony wins — but the stage-05
-*configuration* is the **worst batch corrector of all seven arms (0.427), below even no
-integration at all (0.450)**, while plain Harmony on `sample_name` leads on batch
-removal *and* is second only to Scanorama on bio conservation. Correcting on
-`patient_id` + `n_genes_ref` + `cohort` apparently split the correction across
-covariates rather than strengthening it. **This finding exists only because the
-incumbent was entered as its own arm rather than assumed**, and it is the argument for
-doing the benchmark at all.
-
-**VERDICT: no arm qualified — `harmony_stage05` stays.** Which is the outcome the rule
-was explicitly written to allow, and the reason for writing it in advance.
-
-The full table (`results/05b_benchmark/decision.csv`, rendered into `decision.md`):
-
-| arm | batch | bio | depth R² | plasma mixing | vs incumbent | eligible |
-|---|---|---|---|---|---|---|
-| unintegrated | 0.450 | 0.691 | 0.660 | 0.014 | depth +0.291 | no |
-| `harmony_sample` | **0.615** | **0.718** | 0.509 | 0.515 | depth +0.140, plasma **13.5x** | no |
-| `scvi_sample` | 0.570 | 0.701 | 0.541 | 0.452 | depth +0.172, plasma **11.8x** | no |
-| `scanorama_sample` | 0.450 | 0.723 | 0.690 | 0.161 | depth +0.321 | no |
-| **`harmony_stage05`** | 0.427 | 0.700 | **0.369** | **0.038** | — | (incumbent) |
-| `harmony_cohort` | 0.591 | 0.706 | 0.607 | 0.771 | depth +0.238, plasma **20.2x** | no |
-| `scvi_cohort` | 0.492 | 0.690 | 0.576 | 0.017 | depth +0.207 | no |
-
-**The arms that win on conventional scIB are precisely the arms that merge the censored
-plasma populations.** `harmony_sample` posts the best batch *and* bio scores — and
-mixes the plasma compartment **13.5x** harder than the incumbent while encoding more
-depth. `harmony_cohort` reaches **20.2x**. Meanwhile the two arms that leave the plasma
-populations apart (`unintegrated` 0.014, `scvi_cohort` 0.017) are the ones with no
-meaningful batch gain. **A standard global scIB benchmark would have selected
-`harmony_sample`**, which buys its higher score substantially by fusing populations that
-cannot be fused. That is the failure mode this design was built to catch, and it
-occurred.
-
-The incumbent is simultaneously the **worst batch corrector (0.427, below unintegrated's
-0.450)** and by a wide margin the **least depth-encoding (R² 0.369 against 0.51-0.69)**
-and the **least plasma-merging (0.038)**. Correcting on `patient_id` + `n_genes_ref` +
-`cohort` evidently trades cohort mixing for exactly the properties this dataset needs.
-
-**Stated honestly: `depth_ok` did all the gating.** Every non-incumbent arm failed it,
-so the +0.05 tolerance — fixed before the spread (0.37-0.69) was known — is what
-produced a clean sweep. Two things keep that from being a threshold artifact:
-`harmony_sample`, `scvi_sample` and `harmony_cohort` **independently fail
-`overcorrection_ok`**, so they lose even with the depth criterion removed entirely; and
-relaxing depth enough to admit anything admits only `scanorama_sample` and
-`scvi_cohort`, the two arms with the weakest batch gains. The tolerance is **not**
-re-tuned after the fact — doing so is precisely the post-hoc rationalisation
-pre-declaration exists to prevent.
-
-**Also recorded: scVI encodes depth in plasma cells, badly.** Plasma-compartment
-R²(depth ~ latent) is 0.793 (`scvi_sample`) and 0.850 (`scvi_cohort`) against the
-incumbent's 0.528 and `harmony_sample`'s 0.319. Its explicit library-size model appears
-to put depth *into* the latent space for the compartment where depth is the
-confound — the opposite of the reason it was the principled candidate.
-
-Runtimes (RTX 5070): Harmony ~15 s per arm, Scanorama ~119 s, scVI ~190 s.
-
-**What the benchmark cannot do, and this must be propagated to stage 08.** **No
-integration method restores cells that were never deposited.** A well-mixed latent
-space has not undone the ascertainment bias in the raw counts stage 08 reads. Whichever
-arm wins, **stage 08 still owes its truncate-all-cohorts-at-10,000 sensitivity
-analysis** — selecting a fancier method must not create the impression the censoring was
-"handled". And nothing here can move `frac_double_negative` at all: the embedding feeds
-only stages 06 and 11, antigen calls read `layers["counts"]`, and malignant
-subclustering is per-patient un-integrated.
+---
 
 **06 — Annotation** (`notebooks/06_annotation.ipynb`, `src/mm_escape/annotation.py`;
-env: **`mm-annotation`**). **Three methods are run and compared, and the choice is
-made per class against thresholds declared in advance** — the earlier "`celltypist`
-and/or marker-panel scoring" left a load-bearing methodological decision unmade in
-the middle of the pipeline, where it would have been settled implicitly by whatever
-ran first. Follows `sc-best-practices.org`'s annotation chapter
-(https://www.sc-best-practices.org/cellular_structure/annotation.html).
+env: **`mm-annotation`**). Follows `sc-best-practices.org`'s annotation chapter.
+**Three methods are run and compared, and the choice is made per class against
+thresholds declared in advance** — not "`celltypist` and/or marker scoring", which
+would leave a load-bearing decision to be settled implicitly by whatever ran first.
 
-**What is load-bearing here.** The comparison is weighted by what this stage actually
-feeds, which is three things and only three:
+**What is load-bearing.** This stage feeds three things and only three:
 
 | Downstream need | Labels that matter | Cost of getting it wrong |
 |---|---|---|
-| Stage 07 malignant calling | PlasmaCell vs. everything else | Wrong plasma-cell set → wrong denominator for `frac_double_negative` |
-| Stage 08 ambient noise floor | T / NK / myeloid purity | A plasma cell leaking into the "confidently antigen-negative" population inflates the floor and biases every antigen call |
-| Stage 11 confounder control | T/NK abundance, ideally with subsets | Composition artifact misread as immune evasion |
+| Stage 07 malignant calling | PlasmaCell vs. everything else | wrong plasma-cell set → wrong denominator for `frac_double_negative` |
+| Stage 08 ambient noise floor | T / NK / myeloid purity | a plasma cell leaking into the "confidently antigen-negative" population inflates the floor and biases every antigen call |
+| Stage 11 confounder control | T/NK abundance, ideally with subsets | composition artifact misread as immune evasion |
 
-Fine-grained subtypes (CD4 Tcm vs. Tem, etc.) are a bonus only stage 11 benefits from
-and **must never be the reason a method is chosen**.
+Fine-grained subtypes (CD4 Tcm vs. Tem) benefit stage 11 only and **must never be the
+reason a method is chosen**.
 
-**Method A — manual, marker-based**, at cluster level (not per cell; clustering
-absorbs dropout, which matters at ~2,044 median genes/cell). `scanpy.tl.score_genes`
-over the project panel: PlasmaCell (SDC1/CD38/MZB1/XBP1/IRF4), Bcell
-(MS4A1/CD79A/CD19), Tcell (CD3D/CD3E/CD8A/CD4), NK (NCAM1/NKG7/GNLY), Myeloid
-(CD14/LYZ/ITGAM), Erythroid (HBB/GYPA), HSPC (CD34/KIT). Then
-`scanpy.pl.dotplot(..., standard_scale="var")` as saved assignment evidence, and
-`scanpy.tl.rank_genes_groups(method="wilcoxon")` + `filter_rank_genes_groups`.
-**The DE step is not optional** — it is the only thing that can surface a population
-the seven-class panel does not cover (pDC, erythroid progenitors, a doublet-driven
-cluster). Record ambiguous clusters as ambiguous rather than forcing them into a class.
+**Method A — manual, marker-based**, at cluster level (not per cell; clustering absorbs
+dropout, which matters at 1,162 median genes/cell). `scanpy.tl.score_genes` over the
+project panel: PlasmaCell (SDC1/CD38/MZB1/XBP1/IRF4), Bcell (MS4A1/CD79A/CD19), Tcell
+(CD3D/CD3E/CD8A/CD4), NK (NCAM1/NKG7/GNLY), Myeloid (CD14/LYZ/ITGAM), Erythroid
+(HBB/GYPA), HSPC (CD34/KIT). Then `dotplot(..., standard_scale="var")` as saved
+assignment evidence, and `rank_genes_groups(method="wilcoxon")` +
+`filter_rank_genes_groups`. **The DE step is not optional** — it is the only thing that
+can surface a population the seven-class panel does not cover (pDC, erythroid
+progenitors, a doublet-driven cluster). Record ambiguous clusters as ambiguous.
 
-**Method B — automated #1, `celltypist`.** Input normalized to 10,000 counts/cell then
-`log1p` (CellTypist's stated requirement); run on **expression**, never the Harmony
-embedding. Enumerate models with `celltypist.models.models_description()` rather than
-assuming names; default pair `Immune_All_Low.pkl` + `Immune_All_High.pkl`, and
-evaluate a healthy-bone-marrow model too if the installed version ships one.
-`celltypist.annotate(..., majority_voting=True, over_clustering=<stage-05 leiden key>)`
-— passing the existing Leiden key is what makes the methods directly comparable (same
-partition, different labelings). Retain `conf_score`.
+**Method B — `celltypist`.** Normalize to 10,000 counts/cell then `log1p` (its stated
+requirement); run on **expression, never the Harmony embedding**. Enumerate models with
+`models_description()` rather than assuming names; default `Immune_All_Low.pkl` +
+`Immune_All_High.pkl`, plus a healthy-BM model if one ships.
+`annotate(..., majority_voting=True, over_clustering=<stage-05 leiden key>)` — passing
+the existing Leiden key is what makes the methods comparable (same partition, different
+labelings). Retain `conf_score`.
 
-**Method C — automated #2, `SingleR`** with a hematopoietic reference. Chosen to cover
-CellTypist's expected blind spot rather than duplicate its strengths: `Immune_All_*`
-is immune-only, so its predictable failure is erythroid and HSPC — non-immune marrow
-populations the reference cannot represent. `celldex`'s `NovershternHematopoieticData`
-is built from sorted hematopoietic populations including erythroid and progenitor
-compartments (`HumanPrimaryCellAtlasData` as broader fallback; verify both exist in the
-installed `celldex` rather than assuming). Run with `clusters=<leiden key>` for
-comparability, keeping per-cell scores for pruning diagnostics; retain `pruned.labels`
-and the delta/score matrix as SingleR's own low-confidence signal.
+**Method C — `SingleR`**, chosen to cover CellTypist's blind spot rather than duplicate
+its strengths: `Immune_All_*` is immune-only, so its predictable failure is erythroid and
+HSPC, which `celldex`'s `NovershternHematopoieticData` covers
+(`HumanPrimaryCellAtlasData` as fallback; verify both exist in the installed `celldex`).
+Run with `clusters=<leiden key>`; retain `pruned.labels` and the delta/score matrix as
+SingleR's own low-confidence signal.
 
-**Two caveats about plasma cells, pointing opposite ways.** The automated references
-contain *normal* plasma cells, not malignant ones, so malignant PCs will be labelled
-"Plasma cells" — correct and sufficient, since separating malignant from normal is
-stage 07's job. Do not expect an auto method to find the tumor or count that against
-it. But conversely: because no malignant class exists in the reference, a heavily
-aneuploid clone with an unusual transcriptome may be labelled something else, or split
-across labels. **Check the plasma-cell marker-coverage test on myeloma marrows
-specifically, not only on the normal-BM controls** — otherwise a systematic failure on
-exactly the cells this project measures passes unnoticed.
+**Two caveats about plasma cells, pointing opposite ways.** The references contain
+*normal* plasma cells, so malignant PCs will be labelled "Plasma cells" — correct and
+sufficient, since malignant-vs-normal is stage 07's job; do not count a method down for
+failing to find the tumor. But conversely, because no malignant class exists in the
+reference, a heavily aneuploid clone may be labelled something else or split across
+labels. **Run the plasma-cell marker-coverage test on myeloma marrows specifically, not
+only the donors** — otherwise a systematic failure on exactly the cells this project
+measures passes unnoticed. Stage 05's three cohort-specific plasma clusters cost
+annotation nothing (all three annotate as PlasmaCell) but make this check more important.
 
-**The comparison** (all artifacts to `results/06_annotation/`):
-1. Confusion matrices — manual × CellTypist, manual × SingleR, **CellTypist × SingleR**
-   — at cluster and cell level, plus adjusted Rand index and per-class F1/Jaccard.
-   ARI alone is insufficient: a method can score well overall while failing on plasma
-   cells specifically, the one class that must not be wrong. The two automated methods
-   agreeing with *each other* is the strongest evidence available, since they are
-   independently trained on different references.
-2. **The marker-coverage test — the decisive one.** Dotplot the *manual* panel grouped
-   by each *automated* method's labels. If CellTypist's T cells are CD3D/CD3E-high, its
-   plasma cells MZB1/SDC1-high, its NK cells NKG7/GNLY-high, and so on, the automated
-   labels already encode what the manual panel encodes and manual annotation adds only
-   labor for those classes.
-3. Confidence/coverage report: `conf_score` per cluster, SingleR pruned-`NA` rate and
-   deltas, and the fraction of cells left unassigned or labelled outside the panel.
+**The comparison** (artifacts to `results/06_annotation/`):
+1. Confusion matrices — manual × CellTypist, manual × SingleR, **CellTypist × SingleR** —
+   at cluster and cell level, plus ARI and per-class F1/Jaccard. ARI alone is
+   insufficient: a method can score well overall while failing on plasma cells, the one
+   class that must not be wrong. The two automated methods agreeing with *each other* is
+   the strongest evidence available, being trained on different references.
+2. **The marker-coverage test — the decisive one.** Dotplot the *manual* panel grouped by
+   each *automated* method's labels. If CellTypist's T cells are CD3D/CD3E-high, its
+   plasma cells MZB1/SDC1-high, and so on, the automated labels already encode what the
+   manual panel encodes.
+3. Confidence/coverage: `conf_score` per cluster, SingleR pruned-`NA` rate and deltas,
+   the fraction of cells unassigned or labelled outside the panel.
 
-**These are concordance scores, not validation accuracy (clarified 2026-08-21).** The
-manual annotation is not a ground-truth labelled dataset — it is a third opinion derived
-from the same expression matrix. So "F1 against manual" measures *agreement*, not
-correctness, and CellTypist agreeing with SingleR is agreement between two references
-that share canonical marker biology and may share its blind spots. Report and label all
-of it as **concordance**. The load-bearing evidence of *biological* validity is the
-marker-coverage test (#2 above), not the concordance numbers — a label set can be
-perfectly self-consistent and biologically wrong. The stage's headline figure is
-therefore three panels in this order: **label concordance → marker-expression validity →
-uncertainty / unassigned rate**, with concordance first because it is the weakest of
-the three, not the strongest.
+**These are concordance scores, not validation accuracy.** The manual annotation is a
+third opinion from the same expression matrix, not ground truth — "F1 against manual"
+measures *agreement*, and the two automated methods agreeing is agreement between
+references that share marker-biology priors and may share their blind spots. Label it
+all **concordance**. The load-bearing evidence of *biological* validity is the
+marker-coverage test: a label set can be perfectly self-consistent and biologically
+wrong. Headline figure, in this order — **label concordance → marker-expression validity
+→ uncertainty/unassigned** — concordance first because it is the weakest of the three.
 
-**The decision rule — per class, declared before looking.** Pre-declaring is the point;
-otherwise "choose the best" becomes post-hoc rationalization of whichever result looks
-tidier. A class goes to an automated method when its marker-coverage test passes, its
-own confidence signal is not flagging the cluster, and concordance with manual clears a
-pre-set bar (F1 used as the concordance statistic, per above):
+**The decision rule — per class, declared before looking**, so "choose the best" cannot
+become post-hoc rationalization. A class goes to an automated method when its
+marker-coverage test passes, its own confidence signal is not flagging the cluster, and
+concordance with manual clears a pre-set F1 bar:
 - **PlasmaCell: F1 ≥ 0.95** — strictest, because it sets the metric's denominator.
 - **T / NK / Myeloid: F1 ≥ 0.90** — these define stage 08's noise floor.
 - **Bcell / Erythroid / HSPC: F1 ≥ 0.85** — nothing downstream is load-bearing on these.
 
-Where both automated methods qualify, take the higher concordance and record that both
-passed. Where neither qualifies, that class falls back to the manual cluster label.
-**A failed marker-coverage test vetoes a class regardless of concordance** — high
-agreement on a biologically unsupported label is agreement on an error.
-Expected (to be confirmed, not assumed): immune classes and plasma cells from
-CellTypist, erythroid/HSPC from SingleR or manual. **The numbers decide, not the
-expectation.** Outcome written to `results/06_annotation/annotation_decision.md` with
-the per-class table and the numbers behind it, so the choice is auditable.
+Where both qualify, take the higher concordance and record that both passed. Where
+neither does, the class falls back to the manual cluster label. **A failed
+marker-coverage test vetoes a class regardless of concordance** — high agreement on a
+biologically unsupported label is agreement on an error. Expected but **not** assumed:
+immune classes and plasma cells from CellTypist, erythroid/HSPC from SingleR or manual.
+**The numbers decide.** Outcome to `results/06_annotation/annotation_decision.md`.
 
 **Interface contract — downstream stages read `cell_type` and nothing else:**
-- `obs["cell_type"]` — canonical load-bearing coarse label, the seven project classes.
+- `obs["cell_type"]` — the canonical load-bearing coarse label, seven project classes.
 - `obs["cell_type_fine"]` — CellTypist fine label where available, else `NA`. Stage 11
   only; never load-bearing.
-- `obs["annotation_source"]` — per cell: `celltypist` | `singler` | `manual`. Required
-  under the hybrid; without it a mixed-provenance label column is untraceable.
+- `obs["annotation_source"]` — per cell: `celltypist` | `singler` | `manual`. Without it
+  a mixed-provenance label column is untraceable.
 - `obs["annotation_conf"]` — the winning method's confidence for that cell.
 - `config.ANNOTATION_DECISION` — the per-class method map, so no downstream module
   branches on annotation logic.
@@ -1519,31 +642,29 @@ the per-class table and the numbers behind it, so the choice is auditable.
 This decoupling is deliberate: the comparison can be redone or reversed later without
 touching stages 07-12.
 
-**Orthogonal cell-state programs — continuous, never categorical.** Identity and state
-are different axes: a cell has one `cell_type` but can carry several active programs at
-once. Score these with `scanpy.tl.score_genes` and store as float `obs` columns —
-**never collapse them into `cell_type`**:
+**Orthogonal cell-state programs — continuous, never categorical.** A cell has one
+`cell_type` but can carry several active programs at once. Score with
+`scanpy.tl.score_genes`, store as float `obs` columns, **never collapse into
+`cell_type`**:
 
 | Program | Why it matters here |
 |---|---|
-| Cell cycle (`MKI67`, `TOP2A`, `PCNA`) | A proliferative escape subclone is a different risk from a quiescent one — feeds stage 10 |
-| Interferon response (`ISG15`, `IFI6`, `STAT1`, `MX1`) | Immune-pressure marker; feeds stage 11's evasion question |
-| Antigen presentation (`B2M`, HLA class I/II) | `B2M` loss is a documented immune-escape route in myeloma. CAR-T is MHC-independent so it does not affect the escape metric, but it is a *competing* evasion mechanism and belongs in the stage 11/12 interpretation |
-| Unfolded-protein response (`XBP1`, `ATF4`, `HSPA5`, `DDIT3`) | Plasma cells are professional secretors; UPR tone is core plasma-cell biology |
-| Hypoxia / stress | Standard confounder — cheap to score, expensive to discover late |
+| Cell cycle (`MKI67`, `TOP2A`, `PCNA`) | a proliferative escape subclone is a different risk from a quiescent one — feeds stage 10 |
+| Interferon (`ISG15`, `IFI6`, `STAT1`, `MX1`) | immune-pressure marker; feeds stage 11 |
+| Antigen presentation (`B2M`, HLA I/II) | `B2M` loss is a documented myeloma immune-escape route. CAR-T is MHC-independent so it does not affect the escape metric, but it is a *competing* evasion mechanism and belongs in the stage 11/12 interpretation |
+| UPR (`XBP1`, `ATF4`, `HSPA5`, `DDIT3`) | plasma cells are professional secretors; UPR tone is core PC biology |
+| Hypoxia / stress | standard confounder — cheap to score, expensive to discover late |
 
 A cycling plasma cell is `cell_type == "PlasmaCell"` **plus** a high cell-cycle score,
-not a separate "Cycling" identity. If any method emits a proliferation label as an
-identity, remap it to PlasmaCell + score.
+not a "Cycling" identity. If any method emits a proliferation label as an identity,
+remap it to PlasmaCell + score.
 
-**Per-patient composition is a first-class output of this stage (new)**, not a
-by-product: malignant-PC fraction of the marrow (tumor burden), and T/NK/myeloid
-abundance. Both are needed downstream — tumor burden is context for stage 12, and
-T/NK abundance is the primary confounder for stage 11's central claim. Any
-composition *comparison* between groups uses **`scCODA`**, not a raw proportion
-test: cell-type proportions are compositional data (they sum to 1, so one cell type
-rising forces others down) and naive per-type tests on them are anticonservative.
-Note `scCODA` needs its own env — see the Environment section.
+**Per-patient composition is a first-class output**, not a by-product: malignant-PC
+fraction of the marrow (tumor burden, context for stage 12) and T/NK/myeloid abundance
+(stage 11's primary confounder). Any composition *comparison* between groups uses
+**`scCODA`**, not a raw proportion test — proportions are compositional (they sum to 1,
+so one type rising forces others down) and naive per-type tests are anticonservative.
+`scCODA` needs its own env.
 
 **07 — Malignant plasma cell identification**
 (`notebooks/07_malignant_calling.ipynb`, `src/mm_escape/malignant.py`; env:
@@ -1553,30 +674,27 @@ Note `scCODA` needs its own env — see the Environment section.
 calls over the restriction proxy if available (check GEO supplementary files —
 unconfirmed).
 
-Three upgrades over the original plan, all motivated by the same fact: **this stage
-defines the denominator of the headline metric, so its errors propagate directly
-into `frac_double_negative`.**
-- **Ratio-based restriction, not presence/absence.** IG transcripts are the single
-  most ambient-contaminated genes in this tissue (plasma cells secrete enormous
-  quantities of Ig mRNA into the droplet background — this document's own ambient
-  discussion says so). A presence-based kappa-or-lambda call is therefore much
-  noisier than it looks. Use the per-cell kappa:lambda **ratio**, which is robust to
-  a shared additive background in a way a presence call is not.
-- **`infercnvpy` is promoted from optional to REQUIRED.** Residual *normal* plasma
-  cells are antigen-lower than malignant ones, so every normal PC mistakenly called
-  malignant inflates the escape fraction. An independent CNV-based call is the only
-  cross-check available. Use minority-restriction cells as the per-patient normal
-  reference. **Report the light-chain vs. CNV agreement rate as a stage output** —
-  a low agreement rate invalidates stage 08 and must halt the pipeline, not be
-  noted and passed over.
-- **Normal-BM negative control (new).** Run the identical calling logic on `BM2`,
-  `BM4`, `BM5`, `BM6` and the `ND_*` samples. Normal marrow is polyclonal, so the
-  correct output is *no malignant calls*. If the method calls a malignant clone in
-  normal marrow, the method is broken and nothing downstream is trustworthy. This
-  is the cheapest strong validation available for the most method-dependent step in
-  the project, and it uses samples already downloaded and otherwise idle.
+Three requirements, all motivated by the same fact: **this stage defines the
+denominator of the headline metric, so its errors propagate straight into
+`frac_double_negative`.**
+- **Ratio-based restriction, not presence/absence.** IG transcripts are the most
+  ambient-contaminated genes in this tissue — plasma cells secrete enormous quantities
+  of Ig mRNA into the droplet background — so a presence-based kappa-or-lambda call is
+  much noisier than it looks. Use the per-cell kappa:lambda **ratio**, which is robust
+  to a shared additive background in a way a presence call is not.
+- **`infercnvpy` is REQUIRED, not optional.** Residual *normal* plasma cells are
+  antigen-lower than malignant ones, so every normal PC mistakenly called malignant
+  inflates the escape fraction, and an independent CNV call is the only cross-check
+  available. Use minority-restriction cells as the per-patient normal reference.
+  **Report the light-chain vs. CNV agreement rate as a stage output** — a low rate
+  invalidates stage 08 and must halt the pipeline, not be noted and passed over.
+- **Normal-BM negative control.** Run the identical logic on `BM2`, `BM4`, `BM5`, `BM6`
+  and the `ND_*` samples. Normal marrow is polyclonal, so the correct output is *no
+  malignant calls*; if the method calls a clone there, it is broken and nothing
+  downstream is trustworthy. The cheapest strong validation available for the most
+  method-dependent step in the project, on samples already downloaded and otherwise idle.
 
-**Malignant-evidence tiers, not a binary call (added 2026-08-21).** With two
+**Malignant-evidence tiers, not a binary call.** With two
 independent lines of evidence there is no reason to collapse them into one bit and
 throw the disagreements away. Emit `obs["malignant_confidence"]`:
 
@@ -1589,86 +707,88 @@ throw the disagreements away. Emit `obs["malignant_confidence"]`:
 **Stage 08's headline ranking is then re-run on `high` cells only, as a sensitivity
 analysis.** If the patient ordering survives that restriction, the metric is not an
 artifact of the weaker malignant calls — which is a much stronger statement than the
-agreement rate alone. Note this is the same distinction the 2026-08-21 review makes at
-stage 10: `uncertain` here is a *reported quantity*, never a silent drop, and
-`probable` from CNV being **not evaluable** is not the same as CNV being negative.
-
+agreement rate alone. Same distinction as stage 10's coherence hierarchy: `uncertain`
+is a *reported quantity*, never a silent drop, and `probable` from CNV being **not
+evaluable** is not the same as CNV being negative.
 **08 — Antigen scoring + dual-antigen escape fraction**
 (`notebooks/08_antigen_escape_fraction.ipynb`, `src/mm_escape/antigen.py` +
 `robustness.py`; env: `mm-core`). Per malignant cell: positivity for BCMA
 (`TNFRSF17`), GPRC5D, and backups (`SLAMF7`, `FCRL5`), using the ambient-noise-floor
-threshold (not a naive `>0` call). Classify into `dual_positive`/`BCMA_only`/
-`GPRC5D_only`/`double_negative`. Compute `frac_double_negative` per patient — **the
-core novel metric**. **Blocked on the patient-mapping fix from Supplementary Table
-S1** before this aggregation runs for real (see the S1 policy under "Status").
+threshold (**not** a naive `>0` call). Classify into `dual_positive` / `BCMA_only` /
+`GPRC5D_only` / `double_negative`. Compute `frac_double_negative` per patient — **the
+core novel metric**. The per-patient aggregation uses the S1 mapping (41 patients / 53
+in-cohort samples), which is settled.
 
-This stage now also carries the metric's defense. A single point estimate off a
-single threshold is not a defensible deliverable:
-- **Threshold sensitivity band.** Compute `frac_double_negative` under at least
-  three calling rules — naive `>0`, the ambient noise floor, and a stricter floor.
-  The claim being made is **not** any one number; it is the **stability of the
-  patient ranking** across rules. Report pairwise Spearman ρ between the rankings.
-  A ranking that survives all three thresholds is a real result; one that doesn't
-  is an artifact of a cutoff choice, and must be reported as such.
-- **Depth / dropout checks.** Regress per-patient `frac_double_negative` on the
-  median UMIs-per-cell of that patient's malignant cells. A strong negative slope
-  means the metric is measuring sequencing depth rather than biology — a
-  falsification test, and it must be run before the ranking is presented anywhere.
-  Additionally downsample all malignant cells to a common depth and recompute.
+**This stage carries the metric's defense. A single point estimate off a single
+threshold is not a defensible deliverable.**
+- **Threshold sensitivity band.** Compute `frac_double_negative` under at least three
+  calling rules — naive `>0`, the ambient noise floor, a stricter floor. The claim is
+  **not** any one number; it is the **stability of the patient ordering** across rules.
+  Report pairwise Spearman ρ. An ordering that survives all three is a real result; one
+  that doesn't is an artifact of a cutoff, and is reported as such.
+- **Depth / dropout checks.** Regress per-patient `frac_double_negative` on the median
+  UMIs-per-cell of that patient's malignant cells. A strong negative slope means the
+  metric is measuring sequencing depth rather than biology — **a falsification test, to
+  be run before the ranking is presented anywhere**. Also downsample all malignant cells
+  to a common depth and recompute.
+- **The truncate-all-cohorts-at-10,000-UMI sensitivity run. Owed, not optional.**
+  Stages 04 and 05 both found the WashU deposit ceiling censoring a band enriched
+  20-70× for `GPRC5D`, in 36 of 54 myeloma samples, biased toward this project's own
+  hypothesis. Truncating every cohort at 10k costs nothing here and answers it
+  directly. If the ordering survives, the metric is robust to the censoring; if it does
+  not, WU1/WU2's escape fractions are partly an artifact of what the depositors removed
+  and the framing must say so.
 - **Expression-matched false-negative floor.** Select control genes matched to
-  `GPRC5D`'s mean expression in malignant cells; their zero-fraction in those same
-  cells is the technical false-negative rate the antigen call cannot possibly beat.
-  This converts "GPRC5D is lowly expressed" from a hand-wave into a number.
-- **Uncertainty on every patient.** Bootstrap CI over malignant cells per patient
-  (or a Jeffreys binomial interval). Cell counts vary ~15× across samples in this
-  cohort, so an unqualified rank ordering is not defensible. Declare a **minimum
-  malignant-cell inclusion rule up front** and **report the excluded patients
-  explicitly** — never silently drop them.
-  - **Derive the minimum from the resolution the claim needs, not from a round
-    number (revised 2026-08-21).** At n = 50 malignant cells one cell *is* 2%, so
-    1% / 2% / 3% escape are not distinguishable and a rank ordering across that
-    range is noise with a number attached. Work backwards from the smallest DN
-    fraction the project intends to call meaningful: a 5% population yields ~2.5
-    expected DN cells at n=50, ~5 at n=100, ~10 at n=200. **≥50 is a floor, not the
-    answer; expect the defensible threshold to land nearer 100-200.** The rule stays
-    as written — inspect the per-patient malignant-cell distribution, fix the
-    threshold, *then* look at the ranking — and patients below it are reported
-    descriptively rather than ranked.
-  - **Bootstrap hierarchically — but at the right level (corrected 2026-08-21).**
-    Cells within a patient are not independent draws, and several patients contribute
-    multiple samples (`27522_1`…`_6`, `47491_1/2`, and the rest); a flat cell-level
-    bootstrap treats sample-level batch variation as biological spread and reports CIs
-    that are too narrow. An earlier draft said to resample **patient → sample → cell**
-    for the per-patient CI. **That is the wrong level**: a CI *for patient A* is
-    conditional on patient A, so patient is fixed, not random, and resampling patients
-    answers a different question. The correct split:
+  `GPRC5D`'s mean expression in malignant cells; their zero-fraction in those same cells
+  is the technical false-negative rate the antigen call cannot possibly beat. This turns
+  "GPRC5D is lowly expressed" from a hand-wave into a number.
+- **Uncertainty on every patient.** Bootstrap CI over malignant cells per patient (or a
+  Jeffreys interval). Cell counts vary ~15× across samples, so an unqualified rank
+  ordering is not defensible. Declare a **minimum malignant-cell inclusion rule up
+  front** and **report the excluded patients explicitly** — never silently drop them.
+  - **Derive the minimum from the resolution the claim needs, not from a round number.**
+    At n = 50 one cell *is* 2%, so 1% / 2% / 3% escape are not distinguishable and an
+    ordering across that range is noise with a number attached. Work backwards from the
+    smallest DN fraction the project intends to call meaningful: a 5% population yields
+    ~2.5 expected DN cells at n=50, ~5 at n=100, ~10 at n=200. **≥50 is a floor, not the
+    answer; expect the defensible threshold nearer 100-200.** Inspect the per-patient
+    distribution, fix the threshold, *then* look at the ranking. Patients below it are
+    reported descriptively rather than ranked.
+  - **Bootstrap at the level of the question.** Cells within a patient are not
+    independent draws, and **eight patients contribute more than one sample** —
+    `27522` (six), plus `47491`, `56203`, `58408`, `59114`, `60359`, `81012` and
+    `83942` (two each). Those eight are where the sample-level term has anything to
+    estimate; a flat cell-level bootstrap treats sample-level batch variation as
+    biological spread and reports CIs that are too narrow. **Do not resample patients
+    for a per-patient CI** — a CI *for patient A* is conditional on patient A, so
+    patient is fixed, not random.
+
+    **This list is not the longitudinal list, and the two must not be conflated.**
+    `83942` belongs here because the patient has two samples (`83942` in WashU 1 and
+    `MMY83942` in WashU 2, merged by S1), **not** because it is a serial `_N`
+    trajectory — which is why the longitudinal arm's list of seven correctly excludes
+    it. Multiple samples is what nesting needs; serial timepoints is a different claim.
 
     | quantity | resampling scheme |
     |---|---|
     | **per-patient CI** on `frac_double_negative` | **sample → cell**, within that patient |
     | **cohort-level** inference (mean escape, regression coefficients, distributions) | **patient → sample → cell** |
 
-    Report the flat and sample-aware per-patient intervals side by side so the
-    narrowing is visible. **For the many patients with a single sample this reduces to
-    a cell bootstrap, which cannot see sample-level technical or biological variation
-    at all** — their CIs are therefore optimistic in a way multi-sample patients' are
-    not, and that asymmetry is stated with the ranking rather than buried. Correct
-    nesting is S1-gated (it needs the real sample→patient map), so this is provisional
-    until S1 lands, like every other per-patient aggregate here.
-- **Multi-antigen combinatorial coverage matrix (new).** `SLAMF7`/`FCRL5` are
-  promoted from "backups" to a deliverable. For every pair and triple over
-  {`TNFRSF17`, `GPRC5D`, `SLAMF7`, `FCRL5`, `CD38`, `SDC1`, `ITGB7`}, compute the
-  uncovered fraction of each patient's clone. This answers the question a
-  target-strategy audience actually asks — *is BCMA+GPRC5D the best pair for this
-  patient, or would BCMA+FCRL5 cover more?* — which the two-antigen metric alone
-  cannot.
+    Report the flat and sample-aware per-patient intervals side by side so the narrowing
+    is visible. **For the many single-sample patients this reduces to a cell bootstrap,
+    which cannot see sample-level variation at all** — their CIs are optimistic in a way
+    multi-sample patients' are not, and that asymmetry is stated with the ranking rather
+    than buried.
+- **Multi-antigen combinatorial coverage matrix.** `SLAMF7`/`FCRL5` are promoted from
+  "backups" to a deliverable. For every pair and triple over {`TNFRSF17`, `GPRC5D`,
+  `SLAMF7`, `FCRL5`, `CD38`, `SDC1`, `ITGB7`}, compute the uncovered fraction of each
+  patient's clone. This answers what a target-strategy audience actually asks — *is
+  BCMA+GPRC5D the best pair for this patient, or would BCMA+FCRL5 cover more?*
 
-  **Report it as separate columns; do NOT collapse it into a utility score
-  (2026-08-21).** The same discipline that keeps DN fraction, co-escape and coherence
-  apart at stage 12 applies here. A weighted `coverage − λ · exposure` needs a
-  principled λ, and there isn't one — the weights would encode a clinical judgement
-  the data cannot supply, while hiding the inputs that a reader could otherwise
-  disagree with. Per pair/triple, per patient:
+  **Report it as separate columns; do NOT collapse it into a utility score.** A weighted
+  `coverage − λ · exposure` needs a principled λ, and there isn't one — the weights would
+  encode a clinical judgement the data cannot supply while hiding the inputs a reader
+  could otherwise disagree with. Per pair/triple, per patient:
 
   | column | source |
   |---|---|
@@ -1679,123 +799,102 @@ single threshold is not a defensible deliverable:
 
   The last column is normal **marrow** expression specifically — not "normal tissue",
   which this dataset cannot observe. Coverage is read against it rather than maximized
-  blindly: a target covering 100% of the tumor that also hits normal marrow plasma
-  cells is not a better target. Extra-marrow liabilities (GPRC5D in keratinized tissue)
-  stay a cited external caveat, never a measured column.
-- **The bias table** (in the QC methodology section above) is authored as a figure
-  here and referenced from stage 12.
+  blindly: a target covering 100% of the tumor that also hits normal marrow plasma cells
+  is not a better target. Extra-marrow liabilities (GPRC5D in keratinized tissue) stay a
+  cited external caveat, never a measured column.
+- **The bias table** (QC methodology, above) is authored as a figure here and referenced
+  from stage 12.
 
-**BCMA/GPRC5D co-negativity enrichment — the key derived metric (added 2026-08-21).**
+**BCMA/GPRC5D co-negativity enrichment — the key derived metric.**
 `frac_double_negative` alone cannot distinguish two clinically different tumors. Per
-patient, build the 2×2 contingency table over malignant cells:
+patient, build the 2×2 over malignant cells:
 
 |  | GPRC5D⁺ | GPRC5D⁻ |
 |---|---|---|
 | **BCMA⁺** | dual-positive | BCMA-only |
 | **BCMA⁻** | GPRC5D-only | **double-negative** |
 
-and compare the observed DN fraction against the independence expectation
+and compare observed DN against the independence expectation
 `E[DN] = P(BCMA⁻) × P(GPRC5D⁻)`. Report the **co-escape enrichment ratio**
-`observed(DN) / expected(DN)` with a Fisher's exact test and a permutation CI. This
-separates three facts the single metric fuses into one: how often each antigen is
-individually absent, how many cells are DN, and whether the *same* cells are
-disproportionately losing both. A patient at 6% DN ≈ 0.3 × 0.2 has two independent
-partial failures; a patient at 6% DN against a 1.5% independence expectation has a
-coordinated antigen-low phenotype, and is the one stage 10 then investigates
-mechanistically.
+`observed / expected` with Fisher's exact and a permutation CI. This separates three
+facts the single metric fuses: how often each antigen is individually absent, how many
+cells are DN, and whether the *same* cells are disproportionately losing both. A patient
+at 6% DN ≈ 0.3 × 0.2 has two independent partial failures; a patient at 6% DN against a
+1.5% independence expectation has a coordinated antigen-low phenotype, and is the one
+stage 10 investigates mechanistically. Read whatever this finds against Table S3's
+per-cohort sign flip (MMRF +0.62 / WU2 +0.54 / WU1 −0.09).
 
-**What co-escape enrichment does NOT mean (corrected 2026-08-21).** An earlier draft
-said an enriched patient "is the one dual targeting doesn't help", and that co-escape
-"determines whether a second binder helps at all". **Both overstate it, and the
-arithmetic shows why.** Adding GPRC5D to BCMA moves the uncovered fraction from
+**What co-escape enrichment does NOT mean.** It does **not** mean dual targeting
+"doesn't help", and it does not determine whether a second binder is worth adding. The
+arithmetic shows why. Adding GPRC5D to BCMA moves the uncovered fraction from
 `P(BCMA⁻)` to `P(BCMA⁻ ∩ GPRC5D⁻)`. At 30% BCMA⁻ / 20% GPRC5D⁻ under independence that
 is 30% → 6%. With co-loss enrichment pushing DN to 15%, it is 30% → 15% — less than
 independence promised, but still halving the escape population. Enrichment measures
 **how much of the two targets' expected complementarity is eroded by correlated loss**,
-not whether the second target is worth adding. Use that framing everywhere: it is both
-more precise and more useful to a target-strategy audience than the binary claim it
-replaces.
+not whether the second target is worth adding. Use that framing everywhere.
 
-**Incremental coverage gain — reported alongside (added 2026-08-21).** Co-escape
-enrichment is a statement about *biology* (is loss correlated); the clinical question is
-a statement about *value* (what does the second target buy). Different quantities, both
-cheap off the same 2×2:
+**Incremental coverage gain — reported alongside.** Co-escape enrichment is a statement
+about *biology* (is loss correlated); the clinical question is about *value* (what does
+the second target buy). Different quantities, both cheap off the same 2×2:
 
     gain from adding GPRC5D to BCMA  =  P(BCMA⁻)   − P(BCMA⁻ ∩ GPRC5D⁻)
     gain from adding BCMA to GPRC5D  =  P(GPRC5D⁻) − P(BCMA⁻ ∩ GPRC5D⁻)
 
 Report both per patient with CIs, as separate columns. A patient can carry high
-enrichment *and* a large incremental gain — those are not in tension, and collapsing
-them into one number would hide exactly that case. This is the quantity a single- vs.
-dual- vs. sequential-target discussion actually turns on, and it generalizes directly
-to the coverage matrix below.
+enrichment *and* a large incremental gain — not in tension, and collapsing them into one
+number would hide exactly that case. This is the quantity a single- vs. dual- vs.
+sequential-target discussion actually turns on, and it generalizes to the coverage matrix.
 
-**The null must be depth-conditioned, or this test measures library size.** Dropout is
-a per-*cell* property: a shallow cell is more likely to read zero for *both* genes, so
-depth heterogeneity alone produces positive BCMA⁻/GPRC5D⁻ association. A permutation
-that shuffles antigen labels freely within a patient destroys the depth↔label coupling
-and will report co-escape enrichment on data with no biological co-occurrence at all —
-an artifact pointing in exactly the direction the project wants to find, which is the
-worst kind. Therefore:
-- Stratify cells by sequencing depth (or `n_genes_by_counts`) within patient and
-  **permute labels within stratum**; equivalently, compute `E[DN]` from a per-cell
-  independence model where `P_i(BCMA⁻)` and `P_i(GPRC5D⁻)` are functions of cell *i*'s
-  own depth, and sum over cells.
+**The null must be depth-conditioned, or this test measures library size.** Dropout is a
+per-*cell* property: a shallow cell is more likely to read zero for *both* genes, so
+depth heterogeneity alone produces positive BCMA⁻/GPRC5D⁻ association. A permutation that
+shuffles labels freely within a patient destroys the depth↔label coupling and will report
+co-escape enrichment on data with no biological co-occurrence at all — an artifact
+pointing in exactly the direction the project wants to find, which is the worst kind.
+- Stratify cells by depth (or `n_genes_by_counts`) within patient and **permute labels
+  within stratum**; equivalently compute `E[DN]` from a per-cell independence model where
+  `P_i(BCMA⁻)` and `P_i(GPRC5D⁻)` are functions of cell *i*'s own depth, summed over cells.
 - **Report the unconditioned ratio next to the conditioned one.** The gap between them
-  *is* the depth artifact, quantified — which is a more convincing exhibit than the
-  conditioned number on its own.
-- This supersedes the "label-permutation null" originally filed under stage 09: that
-  test, as written, was already this test — it just wasn't labelled as one.
+  *is* the depth artifact, quantified — a more convincing exhibit than the conditioned
+  number alone.
 
-**The detection curve, and what it can and cannot deliver (corrected 2026-08-21).**
-An earlier draft of this stage proposed a "dropout-adjusted expected DN" computed as
-`Σ_i P_i(BCMA⁻) · P_i(GPRC5D⁻)`. **That formula is circular and is not used as a
-corrected estimate**: multiplying the two marginals assumes exactly the independence
-that the co-escape test above exists to interrogate, so a tumor with genuinely
-correlated antigen loss would be "corrected" toward the very null it violates.
-
-Two consequences, and the first is a simplification worth having:
-
-- **The "dropout-adjusted DN" and the "expected DN under depth-conditioned
-  independence" are the same number.** They were specified as two separate
-  deliverables; they are one computation serving one purpose. It is reported once, as
-  the **depth-adjusted DN expectation under conditional independence** — a *technical
-  baseline* the observed value is compared against, never a corrected truth. Merging
-  them also removes a deliverable that would have invited exactly the misreading above.
-- **No dropout-corrected DN point estimate is produced, and none is claimed.** Dropout
-  is *bounded* here — by the threshold sensitivity band, the expression-matched
-  false-negative floor, the depth regression and the downsampling check — not corrected.
-  The observed DN stays the point estimate, reported as an interval. Saying so plainly
-  is stronger than shipping a number whose correction rests on an assumption the
-  project is simultaneously testing.
+**The detection curve, and what it cannot deliver.**
+`Σ_i P_i(BCMA⁻) · P_i(GPRC5D⁻)` is **circular as a correction** and must never be used as
+one: multiplying the marginals assumes exactly the independence the co-escape test exists
+to interrogate, so a tumor with genuinely correlated loss would be "corrected" toward the
+null it violates.
+- **That computation is reported once, as the depth-adjusted DN expectation under
+  conditional independence** — a *technical baseline* the observed value is compared
+  against, never a corrected truth. The "dropout-adjusted DN" and the "expected DN under
+  depth-conditioned independence" are the same number, not two deliverables.
+- **No dropout-corrected DN point estimate is produced, and none is claimed.** Dropout is
+  *bounded* here — threshold band, false-negative floor, depth regression, downsampling —
+  not corrected. The observed DN stays the point estimate, reported as an interval.
 
 Still build the detection curve: fit detection probability against cell depth and gene
-mean on the expression-matched control genes already selected for the false-negative
-floor, giving each observed zero an approximate `P(false zero)`. It is what makes the
-depth-conditioned null above quantitative rather than rank-based, and it is what turns
-"GPRC5D is lowly expressed" into a number. It just does not license a corrected DN.
+mean on the expression-matched control genes already selected for the floor, giving each
+observed zero an approximate `P(false zero)`. It is what makes the depth-conditioned null
+quantitative rather than rank-based. It does not license a corrected DN.
 
 **A genuinely dropout-corrected DN would need a joint model, and is deferred.** The
 defensible version is a latent-class model over the four true states
-(B⁺G⁺ / B⁺G⁻ / B⁻G⁺ / B⁻G⁻) with per-cell detection probabilities from the curve above,
-fit by EM over the observed 2×2 — which estimates the true joint *without* assuming
-independence, and yields the co-escape enrichment as a by-product rather than an input.
-That is a real piece of statistical work and it is **not** on the critical path: it is
-filed here so it is not reinvented casually, and so that the current position ("bounded,
-not corrected") is understood as a deliberate choice rather than an oversight.
+(B⁺G⁺ / B⁺G⁻ / B⁻G⁺ / B⁻G⁻) with per-cell detection probabilities from the curve, fit by
+EM over the observed 2×2 — estimating the true joint *without* assuming independence and
+yielding co-escape enrichment as a by-product rather than an input. Real statistical work,
+**not** on the critical path. Filed so it is not reinvented casually, and so "bounded, not
+corrected" reads as a deliberate choice rather than an oversight.
 
 **Imputation/denoising (MAGIC, scVI, ALRA, …) is forbidden for positivity calls**, and
-this is not a stylistic preference: imputation manufactures low-level expression by
-borrowing from neighbors, and the entire scientific question here is whether a
-transcript is genuinely absent. Smoothing over the zeros erases the measurement. The
-detection-curve approach models the uncertainty instead of filling it in.
+not as a stylistic preference: imputation manufactures low-level expression by borrowing
+from neighbors, and the entire question is whether a transcript is genuinely absent.
+Smoothing over the zeros erases the measurement. The detection curve models the
+uncertainty instead of filling it in.
 
 **09 — Escape robustness** (`notebooks/09_escape_robustness.ipynb`,
-`src/mm_escape/bulk.py` + `robustness.py`; env: `mm-core`). New stage. Everything
-here exists to answer "how do you know your escape fractions are real?"
+`src/mm_escape/bulk.py` + `robustness.py`; env: `mm-core`). Everything here exists to
+answer "how do you know your escape fractions are real?"
 - **Matched bulk RNA-seq — orthogonal validation of antigen *abundance*, not of the
-  DN fraction (scope corrected 2026-08-21).** For the **26** samples with matched bulk
-  (computed 2026-08-24, not the inherited "~28"), **split by cohort**: MMRF bulk is
+  DN fraction.** For the **26** samples with matched bulk, **split by cohort**: MMRF bulk is
   CD138+ sorted and pairs with malignant-cell pseudobulk, WashU 1 bulk is unsorted
   BMMC and pairs with **whole-sample** pseudobulk. Pooling them would make 10 of the 26
   comparisons measure tumour burden instead of antigen abundance. Then
@@ -1804,57 +903,49 @@ here exists to answer "how do you know your escape fractions are real?"
   is whether scRNA zero-rates run systematically high where bulk says the transcript
   is plainly present — which is direct, quantified evidence of dropout and feeds back
   into stage 08's false-negative floor.
-  **What bulk cannot do is validate `frac_double_negative`**, and the earlier wording
-  claimed it could. Bulk destroys the joint single-cell distribution: a tumor that is
-  50% BCMA⁺GPRC5D⁻ plus 50% BCMA⁻GPRC5D⁺ shows healthy bulk expression of *both*
-  genes while containing zero dual-positive cells — and the converse misreads are
-  equally available. Bulk constrains marginal abundance per gene; the *joint*
-  distribution over cells is visible only in single-cell data and has no orthogonal
-  check in this project. Phrase every output here as **"orthogonal validation of
-  antigen abundance and the plausibility of scRNA-derived antigen-negative calls"**,
-  never as validation of the escape fraction.
+  **What bulk cannot do is validate `frac_double_negative`.** Bulk destroys the joint
+  single-cell distribution: a tumor that is 50% BCMA⁺GPRC5D⁻ plus 50% BCMA⁻GPRC5D⁺
+  shows healthy bulk expression of *both* genes while containing zero dual-positive
+  cells — and the converse misreads are equally available. Bulk constrains marginal
+  abundance per gene; the *joint* distribution over cells is visible only in
+  single-cell data and has no orthogonal check in this project. Phrase every output
+  here as **"orthogonal validation of antigen abundance and the plausibility of
+  scRNA-derived antigen-negative calls"**, never as validation of the escape fraction.
   Handle the two empty 114-byte stubs and the three ID mismatches documented in the
   Data section.
-- **Normal plasma-cell antigen baseline — marrow on-target/off-tumor expression
-  context (scope corrected 2026-08-21).** Do *normal* plasma cells (from `BM*`/`ND_*`
+- **Normal plasma-cell antigen baseline — marrow expression context, not a safety
+  axis.** Do *normal* plasma cells (from `BM*`/`ND_*`
   marrow) express BCMA and GPRC5D, and what do other marrow lineages show? This is
-  real and worth having: BCMA carries broad normal-PC and B-lineage expression, and
-  the malignant-vs-normal-PC contrast is what makes a coverage number interpretable
-  rather than absolute. It feeds the coverage matrix's risk trade-off in stage 08.
-  **It is not a safety axis, and must not be called one.** GPRC5D's clinically
-  decisive off-tumor liability is keratinized tissue — the nail, skin and taste
-  toxicity seen with talquetamab — and a bone marrow dataset cannot observe that at
-  all. Expression is also not toxicity. Keep three things separate in the writeup:
+  real and worth having: BCMA carries broad normal-PC and B-lineage expression, and the
+  malignant-vs-normal-PC contrast is what makes a coverage number interpretable rather
+  than absolute. It feeds the coverage matrix in stage 08.
+  **It is not a safety axis and must not be called one.** GPRC5D's decisive off-tumor
+  liability is keratinized tissue — the nail, skin and taste toxicity seen with
+  talquetamab — which a marrow dataset cannot observe at all, and expression is not
+  toxicity. Keep three things separate in the writeup:
   **(a) tumor coverage**, **(b) normal *marrow* expression** (measured here),
   **(c) known extra-marrow liabilities** (external evidence, cited, not measured).
   A genuine target-ranking utility score of the form
   `coverage − λ · normal-tissue exposure` needs a normal-tissue atlas (GTEx/HPA or a
   normal scRNA atlas) and is filed as a future extension, not claimed from this data.
-- **Label-permutation null → moved to stage 08 as the co-negativity test.** Permuting
-  antigen labels within patient while preserving marginals does not establish "what
-  the metric looks like under no signal" — it holds each antigen's negative rate fixed
-  and tests only whether the two negativities *co-occur* beyond independence. That is
-  a better question than the one it was written for, so it moves to stage 08 as the
-  co-escape enrichment test, with the depth-stratified null documented there.
+- **The label-permutation null lives at stage 08**, as the co-negativity test — it
+  tests independence between the two negativities, not absence of signal, so it belongs
+  with the co-escape enrichment and its depth-stratified null.
 
 **10 — Escape subclone + phenotype** (`notebooks/10_escape_subclone_phenotype.ipynb`,
-`src/mm_escape/subclone.py`; env: `mm-core`). New stage, and **the project's actual
-scientific payoff** rather than another robustness check.
+`src/mm_escape/subclone.py`; env: `mm-core`). **The project's actual scientific payoff**
+rather than another robustness check.
 - **Is the double-negative population structured, or scattered noise?** "3% of this
   patient's cells are double-negative" and "this patient has a pre-existing 3%
   resistant subclone" are different claims, and **only the second one predicts
   selection under therapy** — which is the entire clinical premise of the project.
 
-  **Transcriptional clustering alone does NOT establish clonality (corrected
-  2026-08-21).** The earlier wording — "random scatter is the signature of dropout;
-  spatial clustering is the signature of a real subclone" — was too strong in both
-  directions. A transcriptionally coherent group can arise from cell cycle, stress,
-  interferon tone, metabolic state, sequencing depth, or sample-prep batch as easily
-  as from a genetic subclone; and conversely, cells of a genuine genetic clone need
-  not form a tidy transcriptional island. The name `clonality-of-escape` prejudged
-  exactly the question the analysis is supposed to ask, so it is retired in favour of
-  **DN coherence**, evaluated at three escalating levels with the claim escalating
-  with it:
+  **Transcriptional clustering alone does NOT establish clonality.** A
+  transcriptionally coherent group can arise from cell cycle, stress, interferon tone,
+  metabolic state, sequencing depth, or sample-prep batch as easily as from a genetic
+  subclone; and conversely, cells of a genuine genetic clone need not form a tidy
+  transcriptional island. So the question is **DN coherence**, evaluated at three
+  escalating levels with the claim escalating with it:
 
   | Level | Question | Method | What it licenses saying |
   |---|---|---|---|
@@ -1869,11 +960,11 @@ scientific payoff** rather than another robustness check.
 
   **A negative at level 3 is not evidence of absence.** Resolving CNV substructure
   *within* one patient's clone is a much harder problem than separating tumor from
-  normal, and at this cohort's ~2,044 median genes/cell it will often be
-  underpowered. Report level 3 as **supported / not evaluable**, with the per-patient
-  CNV resolution stated — never as "no CNV subclone". Treating an underpowered null
-  as a negative result would systematically understate exactly the risk this project
-  exists to measure.
+  normal, and at this cohort's depth (1,521 median genes/cell in the plasma
+  compartment) it will often be underpowered. Report level 3 as **supported / not
+  evaluable**, with the per-patient CNV resolution stated — never as "no CNV
+  subclone". Treating an underpowered null as a negative result would systematically
+  understate exactly the risk this project exists to measure.
 
   Emit the per-patient level attained alongside the escape fraction. Runs on the
   per-patient un-integrated embedding from stage 05, never the Harmony one — and note
@@ -1889,54 +980,45 @@ scientific payoff** rather than another robustness check.
   CollecTRI).
 - **Pre-registered hypothesis: the γ-secretase axis** (`NCSTN`, `PSEN1`, `APH1A`,
   `APH1B`, `PSENEN`). γ-secretase cleaves BCMA off the cell surface, and
-  γ-secretase-inhibitor + BCMA CAR-T combinations are in active clinical
-  development precisely to counter it. A γ-secretase-high escape phenotype would be
-  a directly actionable, mechanistically grounded finding rather than a descriptive
-  one. Registered here, before looking, so it stays a hypothesis test and not a
-  post-hoc story.
-- **Malignant-cell program scoring.** Score the malignant compartment on the
-  orthogonal programs defined at stage 06 (cell cycle, IFN, antigen presentation,
-  UPR, hypoxia) plus two that are specifically myeloma-relevant and only meaningful
-  once malignant cells are isolated:
-  - **MYC program** (`MYC` + MYC targets). MYC rearrangement/activation is a
-    recognized progression event in myeloma, which makes "is the escape subclone
-    MYC-high?" a substantive question rather than a generic one.
-  - **Oxidative/metabolic (OXPHOS)**. Standard axis of malignant plasma-cell
-    heterogeneity and a common covariate of proliferation.
-  All remain **continuous scores on malignant cells, never categorical labels** —
-  the identity/state separation established at stage 06 holds here too. A cycling
-  MYC-high escape cell is one cell carrying three scores, not a new cell type.
+  γ-secretase-inhibitor + BCMA CAR-T combinations are in active clinical development
+  precisely to counter it, so a γ-secretase-high escape phenotype would be directly
+  actionable rather than descriptive. **Registered before looking**, so it stays a
+  hypothesis test and not a post-hoc story.
+- **Malignant-cell program scoring.** The stage-06 orthogonal programs (cell cycle,
+  IFN, antigen presentation, UPR, hypoxia) plus two that are myeloma-specific and only
+  meaningful once malignant cells are isolated: the **MYC program** (`MYC` + targets —
+  MYC activation is a recognized myeloma progression event, so "is the escape population
+  MYC-high?" is substantive rather than generic) and **OXPHOS** (a standard axis of
+  malignant PC heterogeneity and a common covariate of proliferation). All stay
+  **continuous scores, never categorical labels** — the stage-06 identity/state
+  separation holds here too. A cycling MYC-high escape cell is one cell carrying three
+  scores, not a new cell type.
 - **TC (Translocation/Cyclin D) molecular subgroup, per patient.** Assign from
   per-patient pseudobulk over malignant cells using the genes whose dysregulation
   defines the founder event: `CCND1` (t(11;14)), `CCND3` (t(6;14)), `NSD2`/`FGFR3`
   (**`NSD2` is `WHSC1` in the older reference — depends on stage 05's symbol
   harmonization; without it this class cannot be called at all**)
   (t(4;14)), `MAF` (t(14;16)), `MAFB` (t(14;20)), `CCND2`, plus **`CKS1B` as the
-  1q21-gain readout** (which also cross-checks `infercnvpy`'s CNV call on that arm
-  from stage 07). Three reasons this earns its place:
-  1. **Cheap** — ~8 bimodal genes off pseudobulk, versus reconstructing the
-     bulk-array-derived UAMS 7-group signatures (Zhan et al., *Blood* 2006).
-  2. **S1-independent** — gives patient stratification without Supplementary
-     Table S1, which is still unresolved; and when S1 lands the two cross-validate
-     (TC-inferred t(4;14) should match S1's reported t(4;14)).
-  3. **Asks a target-strategy question** — does dual-antigen escape risk concentrate
-     in a molecular subgroup? If t(4;14) or t(11;14) patients carry systematically
-     higher `frac_double_negative`, that speaks directly to who needs a different
-     construct. **A hypothesis the data can test, not a known result.**
+  1q21-gain readout** (which also cross-checks `infercnvpy`'s CNV call on that arm from
+  stage 07). Two reasons it earns its place: it is **cheap** (~8 bimodal genes off
+  pseudobulk, versus reconstructing the bulk-array UAMS 7-group signatures), and it asks
+  a **target-strategy question** — does dual-antigen escape risk concentrate in a
+  molecular subgroup? If t(4;14) or t(11;14) patients carry systematically higher
+  `frac_double_negative`, that speaks directly to who needs a different construct.
+  A hypothesis the data can test, not a known result.
 
-  **It is a transcriptional proxy for the translocation, not a detection of it
-  (terminology fixed 2026-08-21).** `NSD2`/`FGFR3` overexpression is *consistent with*
-  t(4;14); it is not a breakpoint call, and expression can be driven by other things.
-  Every output label reads **"TC-like expression subtype"** or **"transcriptionally
-  inferred TC class"** — never "patient has t(4;14)". This costs nothing and removes
-  the single easiest claim in the project to attack. When S1 lands with real
-  cytogenetics, the proxy becomes testable rather than assumed, and the reportable
-  result is *"the expression-based TC proxy agreed with clinical cytogenetics in X/Y
-  evaluable patients"* — which is a better finding than the proxy alone ever was.
+  **It is a transcriptional proxy for the translocation, not a detection of it.**
+  `NSD2`/`FGFR3` overexpression is *consistent with* t(4;14); it is not a breakpoint
+  call, and expression can be driven by other things. Every output label reads
+  **"TC-like expression subtype"** or **"transcriptionally inferred TC class"** — never
+  "patient has t(4;14)". This costs nothing and removes the single easiest claim in the
+  project to attack. **S1 carries no cytogenetics column**, so there is nothing in this
+  deposit to validate the proxy against and it stays a proxy — do not write it up as if
+  a confirmation is pending.
 
   **Assigned per patient from pseudobulk, never per cell.** These signatures come
-  from bulk arrays of purified plasma cells; per-cell assignment on ~2,044-gene cells
-  would be over-claiming. The founder translocation is clonal, so per-patient
+  from bulk arrays of purified plasma cells; per-cell assignment at 1,521 median
+  genes/cell would be over-claiming. The founder translocation is clonal, so per-patient
   uniformity is the expectation — a patient splitting across two TC classes is more
   likely a doublet or patient-mapping artifact than biology, and is flagged as a QC
   signal rather than reported as heterogeneity.
@@ -1973,7 +1055,7 @@ groups, which is **pseudoreplication** — it treats thousands of cells from one
 patient as thousands of independent observations, inflating significance
 arbitrarily. Instead:
 - Compute **per-patient** LR interaction scores; the patient is the unit of
-  replication, n ≈ 41, not n ≈ 181,336.
+  replication, n ≈ 41, not n ≈ 172,940.
 - Model `frac_double_negative` as a **continuous predictor** across patients rather
   than binarizing into tertiles. This avoids an arbitrary cutoff and has strictly
   more power than discarding the middle tertile.
@@ -1985,12 +1067,13 @@ arbitrarily. Instead:
 
 **12 — Decision packet** (`notebooks/12_decision_packet.ipynb`; env: `mm-core`).
 The final stage; consumes the output of everything upstream. Assembles:
-- Escape-fraction table, annotated with disease stage/cytogenetics from
-  Supplementary Table S1 where available.
-- **Caterpillar plot with confidence intervals**, replacing the original ranked bar
-  chart — a bar chart implies a precision this metric does not have.
-- **Risk tiers, not a rank ordering (decided 2026-08-21).** The caterpillar plot fixed
-  the chart but not the deliverable: printing "#1 patient 123, #2 patient 456" is
+- Escape-fraction table, annotated from S1 with ISS stage, treatment, TTPD, and
+  disease stage **for WashU cohort 1 only** — MMRF and WashU 2 have no per-sample stage
+  and it is *not* imputed. **S1 carries no cytogenetics**, so no karyotype column exists
+  and stage 10's TC class enters as an explicitly transcriptional proxy.
+- **Caterpillar plot with confidence intervals**, never a ranked bar chart — a bar
+  chart implies a precision this metric does not have.
+- **Risk tiers, not a rank ordering.** Printing "#1 patient 123, #2 patient 456" is
   false precision when the CIs overlap heavily, and the ordinal positions are not
   stable quantities. Assign tiers instead, and only where the evidence justifies one:
   - **Robust high escape** — DN estimate elevated, stable across the threshold band,
@@ -2033,418 +1116,202 @@ The final stage; consumes the output of everything upstream. Assembles:
 
 ## Status / immediate next step
 
-**Stages 01-05 plus 05b are run and verified. Stage 06 (annotation) is the next
-artifact.**
-The working tree is clean (R build removed, preserved under `r-build-snapshot`), `raw/`
-is intact at 62 samples, `scripts/01-03` are confirmed (62/62 `triplet-ok`), notebooks
-01-03 are written and executed, the four `envs/*.yml` are built with kernels
-registered, and `src/mm_escape/` holds `config.py`, `gene_space.py` and `io.py`. See
-`RESUME_HERE.md` for exact session state as work proceeds.
+**Stages 01-05b are run and verified. Stage 06 (annotation) is the next artifact.**
+`raw/` is intact at 62 samples, the five `envs/*.yml` are built with kernels registered,
+and `src/mm_escape/` holds `config.py`, `gene_space.py`, `io.py`, `qc.py`,
+`integration.py` and `benchmark.py`. Run output and module validation logs are in
+`docs/stage-results.md`; `RESUME_HERE.md` carries exact session state.
 
-**`io.py` is written and validated against the real files (2026-08-24).** All **62**
-samples load in ~2 s; the four-sample failure-mode set (`MMRF_1695` = 33538 build,
-`27522_1` = 33694 build, `BM4` = donor control, `56203_1` = truncated deposit)
-round-trips through `gene_space.py` to 32,991 genes with all 65 required genes present.
-Verified: the genes x cells -> cells x genes transpose (against random raw `.mtx`
-triplets plus exact total-count and nnz equality), deposited gene order preserved
-untouched for `attach_ensembl_ids`'s positional join, `<sample_name>_<barcode>`
-obs_names unique across the concat, the `56203_1` prefix repair plus its two failure
-modes, and the GEO metadata join. Cohort **pre-QC** totals: **204,040 cells over 62
-samples** (155,890 myeloma / 48,150 donor).
-
-`load_manifest()` emits `cohort`, `chemistry`, `dead_cell_removal` and `diagnosis`
-from `resources/sample_metadata/`, and every cell carries them — stage 04 needs
-`cohort` before it can derive thresholds.
-
-**`qc.py` and `notebooks/04_qc.ipynb` are written and run (2026-08-24).** 204,040 ->
-172,940 cells; per-cohort thresholds derived and documented; `scDblFinder` run on all
-62 samples; one checkpoint per sample under `results/04_qc/samples/` with every
-barcode retained. Read the stage-04 entry above for the two departures the data forced
-and the pre-filtering correction — both are load-bearing for stage 08.
-
-**Supplementary Table S1 landed 2026-08-24 and is parsed.** The patient mapping is
-resolved (41 patients / 53 in-cohort samples), the `_N` suffixes are confirmed as
-serial timepoints, and clinical covariates reach every cell. The S1 policy below is
-therefore mostly discharged — see it for what remains.
-
-**Stage 05b's benchmark is run (2026-08-24) and the incumbent survived it** — see the
-stage-05b entry above. `envs/env-integration.yml` is built and `mm-integration` is
-registered; `src/mm_escape/benchmark.py` and `tests/test_benchmark.py` (24 data-free
-tests) are committed. Nothing about stage 05's output changed as a result.
-
-**`integration.py` and `notebooks/05_integration_clustering.ipynb` are written and
-run (2026-08-24).** 172,940 x 32,991, 30 clusters, embedding in
-`results/05_integration/integrated.h5ad`. Read the stage-05 entry above for the
-compartment-specific integration result, which is load-bearing for stage 08.
+**Supplementary Table S1 is in the repo and parsed.** The patient mapping is resolved
+(41 patients / 53 in-cohort samples), the `_N` suffixes are confirmed as serial
+timepoints, and clinical covariates reach every cell. **It carries no cytogenetics** —
+so stage 10's TC class has nothing in this deposit to validate against and stays a
+proxy, and stage 12's karyotype annotation is not available. The full account of what
+S1 did and did not close is in `docs/decisions-archive.md`.
 
 First actions, in order:
 1. Write `src/mm_escape/annotation.py` and `notebooks/06_annotation.ipynb` in
    **`mm-annotation`** (needs `pip install -e . --no-deps` in that env first — it was
    only done for `mm-qc` and `mm-core`).
-2. Run all three methods and compare per class against the F1 thresholds **declared
-   in advance** (PlasmaCell 0.95 / T-NK-myeloid 0.90 / rest 0.85). Do not settle this
+2. Run all three methods and compare per class against the F1 thresholds **declared in
+   advance** (PlasmaCell 0.95 / T-NK-myeloid 0.90 / rest 0.85). Do not settle this
    implicitly by whichever runs first. Write
    `results/06_annotation/annotation_decision.md`.
-3. The marker-coverage test is the load-bearing evidence, not the concordance
-   numbers — a label set can be perfectly self-consistent and biologically wrong.
+3. The marker-coverage test is the load-bearing evidence, not the concordance numbers —
+   a label set can be perfectly self-consistent and biologically wrong, and it must be
+   run **on myeloma marrows specifically**, not only the donors.
 4. Emit the interface contract exactly: `cell_type`, `cell_type_fine`,
    `annotation_source`, `annotation_conf`, plus `config.ANNOTATION_DECISION`. Stages
    07-12 read `cell_type` and nothing else.
-5. Score the orthogonal state programs as **continuous** `obs` floats — never let
-   them leak into `cell_type`.
-6. Note stage 05 split plasma cells into three cohort-specific clusters. That is
-   expected and costs annotation nothing (all three annotate as PlasmaCell), but the
-   plasma-cell marker-coverage check must be run **on myeloma marrows specifically**,
-   not only the donors.
+5. Score the orthogonal state programs as **continuous** `obs` floats — never let them
+   leak into `cell_type`.
 
-### Supplementary Table S1 policy (decided 2026-08-20)
+### S1-gated additions, now unblocked
 
-**SUPERSEDED 2026-08-24 — S1 is in the repo and parsed.** Kept for the record, and
-because the "label provisional output as provisional" discipline still applies to
-anything computed before it landed. What S1 closed: the patient mapping (41/53), the
-`_N` suffix meaning (serial timepoints), disease stage for WashU cohort 1, and ISS /
-treatment / TTPD per patient. What it does **not** close: per-sample disease stage for
-MMRF and WashU 2 (absent, not imputed), cytogenetics — S1 carries **no** t(4;14),
-1q21 or other karyotype column, so stage 10's TC proxy has nothing in this deposit to
-validate against and stays a proxy — and the three bulk/sc ID mismatches, of which
-`47499`/`98433` are now explained as bulk-only patients that S1 does list.
-
-The original policy read:
-
-S1 is still not in the repo and still blocks the patient mapping. **Do not stall the
-pipeline on it.** The policy is: build everything S1-independent first, running on
-the provisional naive mapping, and **label every S1-dependent number as provisional
-in the output itself** (filename suffix and in-figure annotation, not just a comment)
-so a provisional number can never be mistaken for a final one. Attempt S1 retrieval
-when stage 08's aggregation is reached. S1 gates only:
-- the 47-vs-41 patient mapping (stage 08 aggregation),
-- the within-patient longitudinal arm (below),
-- disease stage / cytogenetic annotation (stage 12),
-- the three bulk/sc ID mismatches (stage 09).
-
-Everything else — QC, integration, annotation, malignant calling, per-cell antigen
-scoring, the robustness suite, the subclone test — runs to completion without it.
-
-### S1-gated additions (flagged provisional until S1 lands)
-
-- **Within-patient longitudinal escape trajectory.** `27522_1` through `27522_6` is
-  six samples from one patient, plus `47491_1/2`, `56203_1/2`, `58408_1/2`,
-  `59114_1/4`, `60359_1/2`, `81012_1/2`. If those suffixes are timepoints, this is a
-  longitudinal arm at zero extra data cost — does escape fraction rise over time
-  within a patient?
-
-  **The evidence now points TOWARD a serial per-patient index, reversing what this
-  document previously said (2026-08-24).** The old claim — that bulk/sc suffix
-  misalignment argues against a timepoint reading — rested on `59114` alone. Against
-  the full bulk list, every patient present in both assays has bulk suffixes as a
-  subset or overlap of the scRNA ones, never a disjoint or differently-based scheme:
-
-      27522   sc [1,2,3,4,5,6]   bulk [1,2,4]     bulk subset of sc
-      60359   sc [1,2]           bulk [1,2]       bulk subset of sc
-      56203   sc [1,2]           bulk [2]         bulk subset of sc
-      59114   sc [1,4]           bulk [1,2]       overlap at 1, union {1,2,4}
-
-  Stronger still: `37692_2` and `57075_3` are **lone** samples with non-`_1`
-  suffixes. A fraction, sort or replicate label starts at 1 for a single sample; a
-  serial event index does not — it means events 1 (and 2) exist and were not
-  deposited. That reading explains all four patterns at once, and explains the
-  bulk/sc "misalignment" as incomplete assay coverage of a shared index.
-
-  **Still not proof of *timepoint* specifically, and S1 still settles it** — but the
-  arm is now worth planning for rather than discounting.
-- **Escape fraction vs. clinical/genomic covariates.** NDMM vs. RRMM, ISS stage,
-  1q21 gain, t(4;14). Even descriptive at n ≈ 41, "is baseline escape risk higher in
-  relapsed/refractory disease?" is a real, testable hypothesis on this cohort as-is.
+- **Within-patient longitudinal escape trajectory.** `27522_1`…`_6` is six timepoints
+  from one patient, plus `47491_1/2`, `56203_1/2`, `58408_1/2`, `59114_1/4`,
+  `60359_1/2`, `81012_1/2`. Confirmed serial by S1 sheet 2, so this is a real
+  longitudinal arm at zero extra data cost — does escape fraction rise over time within
+  a patient? Note `37692_2` and `57075_3` are lone later timepoints whose earlier draws
+  were not deposited.
+- **Escape fraction vs. clinical covariates.** NDMM vs. RRMM, ISS stage, treatment,
+  time-to-progression. Descriptive at n ≈ 41, but "is baseline escape risk higher in
+  relapsed/refractory disease?" is a real testable hypothesis on this cohort as-is.
+  **Cytogenetic covariates (1q21 gain, t(4;14)) are NOT available** — S1 has no such
+  column.
 
 ### Execution ordering
 
 Chosen so the project has several presentable stopping points rather than being
 all-or-nothing:
 
-1. Re-confirm `scripts/01-03` → scaffold `src/mm_escape/` + envs.
-2. Stages 04-08 core path on the provisional mapping.
+1. ~~Re-confirm `scripts/01-03` → scaffold `src/mm_escape/` + envs.~~ **Done.**
+2. Stages 04-08 core path. **04, 05, 05b done.**
    **First presentable state: escape fractions with co-escape enrichment.**
 3. Stage 08's defense layer (sensitivity band, dropout checks, CIs) + stage 09.
    **Second presentable state: a ranking that survives hostile questioning.**
-4. Stage 10 (subclone test + phenotype).
-   **Third: the actual scientific finding.**
+4. Stage 10 (subclone test + phenotype). **Third: the actual scientific finding.**
 5. Stage 11 (communication), then stage 12 (decision packet) last.
-6. S1 retrieval → un-flag provisional numbers, add longitudinal + cytogenetics.
-7. Phase 2 (GSE117156) — unchanged, and still strictly last.
+6. Phase 2 (GSE117156) — strictly last.
 
 ---
 
-## Things to not re-litigate (already decided, with reasoning)
+## Things to not re-litigate
 
-- **No Biowulf/HPC needed.** Data is small (~970MB), no raw alignment step
-  exists to run.
-- **No SINCLAIR.** Was for raw FASTQ processing; moot, no raw reads exist.
-- **Custom `read_mtx`-based loader, not `scanpy.read_10x_mtx()`.** The latter
-  hardcodes filenames this archive doesn't use.
-- **`56203_1` is REPAIRED and retained, not excluded (reversed 2026-08-24).** It is a
-  33694-build sample whose `genes.tsv` write failed at row 22185, not a 22184-gene
-  reference — its matrix declares the full 33694 rows and the written rows are a strict
-  prefix of the standard list. The canonical column is substituted from the committed
-  gene map behind a prefix assertion that raises rather than guessing. The old
-  exclusion was reasoned from a misdiagnosis. Zero-filling remains wrong and is not
-  what this does.
-- **Gene sets are intersected across samples, never unioned.** Full reasoning in the
-  Data section.
-- **Ambient RNA (SoupX/DecontX) is not attemptable** — no unfiltered matrices
-  exist for this dataset. Mitigated via an empirical antigen-positivity noise
-  floor instead, not left uncorrected silently.
-- **MAD-based QC thresholds, re-derived per this cohort AND per cohort within it** —
-  not a straight copy of `sc-best-practices`'s tutorial numbers. Done, 2026-08-24; the
-  values are in `results/04_qc/qc_thresholds.csv` and summarised at stage 04 above.
-- **`pct_counts_in_top_20_genes` is computed and reported but never filters
-  (2026-08-24).** In myeloma marrow an Ig-dominated library is a plasma cell's normal
-  state, so a MAD cut on it deletes antigen-**positive** malignant cells (the flagged
-  decile is 21x enriched for `TNFRSF17`) and inflates the escape fraction. It stays as
-  an ambient-Ig handle for stage 08, which needs one because SoupX cannot run here.
-  Re-enabling it is one explicit argument to `flag_outliers`, for a sensitivity run.
-- **The deposit is pre-filtered, differently per cohort, and the WashU 10,000-UMI
-  ceiling is a real confounder (2026-08-24).** It censors a band enriched 20-70x for
-  `GPRC5D`, in 36 of 54 myeloma samples, biased toward the project's own hypothesis.
-  Not corrected at stage 04 (that would mean discarding 42% of MMRF); carried as a
-  covariate, with a truncate-all-at-10k sensitivity analysis owed at stage 08. The
-  earlier claim that their stated QC "was not applied" is **wrong and superseded** —
-  it was reasoned from a pooled average that hid the per-cohort structure.
-- **QC annotates, it does not delete.** Every stage-04 checkpoint holds every barcode
-  with `obs["keep"]` set. Filtering happens at stage 05. For a fraction-of-zeros
-  metric, "does this survive a different QC?" is a question that will be asked, and it
-  is only answerable if the filtered cells are still on disk.
-- **`scDblFinder` (R) via an isolated `rpy2` bridge in `env-qc`**, not a
-  pure-Python doublet-detection swap.
-- **The gene-space join is on Ensembl ID, reconstructed and verified (2026-08-21).**
-  The deposit is symbol-only, but the three distinct `genes.tsv` files are positional
-  dumps of public references and were reproduced exactly (0 mismatches / 33538 and
-  33694 rows) from the Ensembl 93 / 84 GTFs plus Seurat's `gsub("_","-")` +
-  `make.unique`. Mapping committed at `resources/gene_space/`. Recovers **32,991 genes
-  vs. 22,164 on symbols (+10,827)**. Do not re-open, do not regenerate, and do not
-  search for an `ENSG` column in the raw files — there isn't one.
-- **The four-gene alias dictionary is now only a regression assertion.** It addressed
-  4 of the 11,140 symbols that drift between builds; it was never a harmonization
-  method and must not be treated as one.
-- **The "drop ~52 `make.unique`-ambiguous symbols" interim is superseded** — those
-  genes resolve correctly under the ID join. The `.N` suffixes encode row order, which
-  is why a symbol join could pair the *wrong* gene (`TBCE` is a different Ensembl entry
-  in each build); IDs remove the ambiguity rather than working around it.
-- **`var_names` = Ensembl ID through the merge, canonical symbol afterwards.** Identity
-  matters at the join; readability matters everywhere downstream, and the whole scanpy
-  stack is symbol-native. The 9 symbols still colliding after the ID intersection get
-  `SYMBOL__ENSG...`, never `var_names_make_unique()`.
-- **AnnData, not MuData.** One cell-level modality; the stage-09 bulk is sample-level
-  and joins on `sample_id` as a DataFrame. MuData would add no capability here.
-- **Gene symbols are canonicalized before the gene-space intersection.** The two
-  Cell Ranger references use different HGNC vintages; intersecting raw symbols drops
-  `NSD2`/`WHSC1`, `TENT5C`/`FAM46C`, `NSD3`/`WHSC1L1`, `ATP5F1A`/`ATP5A1`. A missing
-  required gene means "check for a legacy symbol", not "biologically absent".
-- **The required-gene assertions stay, and stay loud.** They caught the `NSD2` drift
-  that manual inspection had missed across two prior builds of this project.
-- **Annotation is decided empirically, per class, at stage 06** — manual +
-  `celltypist` + `SingleR`, compared, with F1 thresholds declared before looking
-  (PlasmaCell 0.95 / T-NK-myeloid 0.90 / rest 0.85). Not a preference, not an
-  `and/or`. The decision and its numbers live in
-  `results/06_annotation/annotation_decision.md`.
-- **`obs["cell_type"]` (seven coarse classes) is the ONLY load-bearing annotation
-  output.** Everything downstream reads it and nothing else; `cell_type_fine` is for
-  stage 11's convenience and is never load-bearing. This is what lets the annotation
-  decision be revisited without touching stages 07-12.
-- **Identity and state are separate axes.** Cell-cycle / IFN / antigen-presentation /
-  UPR / MYC / OXPHOS are **continuous scores**, never categorical labels, and never
-  leak into `cell_type`. A cycling plasma cell is PlasmaCell + a high score, not a
-  "Cycling" cell type.
-- **No custom `celltypist` model for malignant states.** A regularized linear
-  classifier forces plastic, continuous tumor substructure into discrete bins and
-  hides the intermediates. Malignant identity stays at stage 07 (light-chain +
-  `infercnvpy`); malignant substructure stays at stage 10 (per-patient un-integrated
-  subclustering + pseudobulk DE + `decoupler`). Both are score-and-cluster, not
-  classification.
-- **TC molecular subgroup yes, UAMS 7-group no.** TC is ~8 bimodal genes off
-  per-patient pseudobulk and is S1-independent; UAMS-7 needs bulk-array signature
-  sourcing and splits n≈41 into unpowerable bins. TC is assigned **per patient**, and
-  used **descriptively** — it is not a statistical stratifier at this cohort size.
-  It is labelled a **TC-like expression subtype**, never a translocation call — it is
-  a transcriptional proxy, and S1's cytogenetics is what would test it.
-- **R stays isolated in its own environments** (`env-qc` for `scDblFinder`,
-  `env-annotation` for `SingleR`) — never merged into `mm-core`.
-- **Malignant calling via light-chain restriction, not clustering alone** — and by
-  **ratio**, not presence/absence, because IG genes are the most ambient-contaminated
-  in this tissue.
-- **`infercnvpy` is required, not optional**, with the agreement rate reported. This
-  stage sets the metric's denominator; its errors propagate straight into the
-  headline number.
-- **Normal-BM samples are controls, not filler.** They validate the malignant caller
-  (polyclonal marrow must yield no clone) and provide the normal-PC antigen baseline.
-  They are not to be dropped as "not myeloma." But that baseline is **marrow
-  expression context, not a safety axis** — GPRC5D's decisive off-tumor site is
-  keratinized tissue, which this dataset cannot see. Tumor coverage, normal *marrow*
-  expression, and known extra-marrow liabilities stay three separate things.
-- **Dropout is bounded, not just mentioned.** It is the opposite-signed and larger
-  counterpart to ambient RNA, and `GPRC5D` is a low-abundance transcript. The
-  headline metric is reported as a bracketed interval with a threshold sensitivity
-  band, never as a bare point estimate.
-- **Ranking stability across thresholds is the robustness *diagnostic*; risk tiers
-  are the deliverable.** No single threshold's value is the claim, and neither is an
-  ordinal rank when the CIs overlap — stage 12 emits robust-high / uncertain /
-  robust-low, with co-escape enrichment and DN coherence as separate columns.
-- **Matched bulk RNA-seq (GSE223061) is used, not shelved.** It was already
-  downloaded and previously unused; it is the only orthogonal check available on the
-  antigen quantification. It validates **antigen abundance and the plausibility of
-  antigen-negative calls** — never the dual-negative fraction itself, which is a
-  joint single-cell quantity that bulk destroys by construction.
-- **No composite risk score, anywhere.** DN fraction, incremental coverage gain,
-  co-escape enrichment, DN coherence, malignant confidence, threshold sensitivity and
-  bulk concordance stay separate columns — in the patient table and in the coverage
-  matrix alike. A weighted utility would need principled weights that do not exist, and
-  would hide the inputs a reader could otherwise disagree with.
-- **Co-escape enrichment measures eroded complementarity, not futility.** Adding a
-  second target moves the uncovered fraction from `P(A⁻)` to `P(A⁻ ∩ B⁻)`, which is a
-  real gain even under strong correlated loss. Never write that enrichment means dual
-  targeting "doesn't help"; report the incremental gain next to it.
-- **No dropout-corrected DN point estimate is claimed.** `Σ P(A⁻)·P(B⁻)` is the
-  independence baseline the co-escape test compares against, *not* a correction —
-  using it as one would assume away the dependence being measured. Dropout is bounded
-  (sensitivity band, false-negative floor, depth regression, downsampling), not
-  corrected. A joint latent-class/EM model over the four true states is the honest way
-  to correct it and is deliberately deferred, not forgotten.
-- **Bootstrap at the level of the question**: sample → cell within patient for a
-  per-patient CI (patient is conditioned on, not random); patient → sample → cell for
-  cohort-level quantities. Single-sample patients get optimistic CIs and this is stated.
-- **Co-negativity enrichment is a first-class result, and its null is
-  depth-stratified.** Whether the *same* cells lose both antigens is a different and
-  sharper question than how many are double-negative. An unconditioned permutation
-  null would report enrichment from library-size variation alone, biased toward the
-  project's own hypothesis — so the null is permuted within depth strata and the
-  unconditioned value is reported next to it as the size of the artifact.
-- **"Subclone" requires CNV support (stage 10).** Transcriptional clustering of DN
-  cells establishes an escape-associated *state*, not a clone — coherence has many
-  non-genetic causes. `clonality-of-escape` is retired for a three-level coherence
-  hierarchy, and level 3 reports *supported / not evaluable*, never "no CNV
-  subclone", because within-clone CNV resolution is often underpowered here.
-- **Binary antigen calls stay primary; a dropout-adjusted estimate runs alongside;
-  imputation is forbidden.** Denoising manufactures low-level expression, and whether
-  a transcript is genuinely absent is the entire question. Model the uncertainty with
-  a detection curve, never fill it in.
-- **Annotation numbers are concordance, not validation accuracy** (stage 06). Manual
-  labels are a third opinion, not ground truth, and the two automated methods share
-  marker-biology priors. The marker-coverage test is the biological evidence and can
-  veto a class regardless of concordance.
-- **Stage 11 is exploratory and ranks ninth**, not co-equal with the antigen
-  analysis — n ≈ 41 against hundreds of LR pairs with a correlated confounder does
-  not support a confirmatory claim.
-- **Stage 11 uses patient as the unit of replication and escape fraction as a
-  continuous predictor** — the original tertile split was pseudoreplication. T/NK
-  abundance is controlled as a confounder.
-- **Pseudobulk DE with patient as replicate, never per-cell DE tests** (stage 10) —
-  per-cell tests inflate FDR by treating cells as independent replicates.
-- **Harmony with `patient_id` + `n_genes_ref` + `cohort` survived a real benchmark
-  (stage 05b, 2026-08-24) and is not re-opened.** Seven arms — unintegrated, Harmony /
-  scVI / Scanorama on `sample_name`, the incumbent, and Harmony / scVI on `cohort` —
-  scored with `scib-metrics` on the immune compartment against provisional CellTypist
-  labels. No arm qualified under the pre-declared rule.
-- **On this dataset a standard global scIB ranking selects the wrong method, and that
-  is now demonstrated rather than argued.** The arms scoring best on conventional scIB
-  are the ones that merge the censored plasma populations: `harmony_sample` (best batch
-  *and* bio scores) mixes plasma **13.5x** harder than the incumbent, `harmony_cohort`
-  **20.2x**, both while encoding more depth. Batch metrics cannot tell "correctly left
-  apart" from "failed to merge", so **the immune compartment is scored and the plasma
-  compartment is only diagnosed** — plasma mixing never contributes positively.
-- **`R²(depth ~ latent)` is the depth statistic, chosen for rotation-invariance.** It
-  depends only on the embedding's column span, so it compares across methods whose
-  latent axes are arbitrary; a per-dimension `max |Spearman|` would not.
-- **BBKNN is excluded from the benchmark, not overlooked.** It yields a corrected
-  neighbour graph and no embedding, so `Benchmarker` cannot score it on the same
-  footing; deriving an embedding from its graph would compare a different object. It is
-  installed in `mm-integration` so a graph-only side diagnostic stays possible.
-- **scANVI and scGen are deferred, not rejected.** Both need cell-type labels, which
-  come from stage 06 — which consumes the embedding under selection. They become a fair
-  secondary benchmark once stage 06's labels exist.
-- **Malignant subclustering is per-patient and un-integrated.** Harmony is for the
-  immune compartment; the malignant clone is patient-private and must not be blended
-  across patients. Per-cell antigen calls are raw counts and are unaffected by
-  integration either way.
-- **`scCODA` gets its own env if used** — it pulls TensorFlow and must not
-  destabilize `mm-core`.
-- **The γ-secretase hypothesis is pre-registered** (stage 10), so it stays a
-  hypothesis test rather than a post-hoc narrative.
-- **Number order is execution order, with no exceptions** (04 → 12). The
-  2026-08-20 scope expansion renumbered the sequence rather than appending new
-  stages out of position, specifically to preserve this. Never add a stage whose
-  number and run position disagree.
-- **GSE117156 is the confirmed Phase 2 dataset; GSE118900 was evaluated and
-  rejected** (no healthy controls, too few cells per patient). He et al. 2022
-  has no data availability statement at all and is unusable as a data source.
-- **GSE117156 must never be merged with GSE223060** (platform mismatch) — runs
-  as a fully separate, `phase2_`-prefixed pipeline; comparison is
-  distributional, not a merged ranking.
-- **The whole analysis runs in notebooks, stages 01-12** — every stage is openable and
-  steppable. `scripts/01-03` are kept as a headless CLI fallback and are *wrapped* by
-  notebooks 01-03, never reimplemented; their output is the contract and byte-identical
-  parity is verified.
-- **Notebooks carry the analysis; `src/mm_escape/` carries what is reusable, testable,
-  or fiddly.** Paired via `jupytext`, `.ipynb` gitignored. This is a deliberate
-  relaxation of the earlier "notebooks are thin orchestration" rule — the goal was never
-  thinness, it was avoiding duplicated logic and keeping review on `.py` diffs.
-- **Four environments split by actual dependency-conflict risk**
-  (`mm-qc`/`mm-core`/`mm-annotation`/`mm-communication`), not one per pipeline stage.
-  Two of them exist purely to quarantine R.
-- **Notebooks and `results/` subdirectories are numbered `04`-`12`, matching
-  1:1, continuing straight on from `scripts/01-03`.** `src/mm_escape/` modules
-  are named by function, not numbered — different rule for a library vs. a
-  pipeline sequence, on purpose.
+A scan list, not an argument. Each line is settled; **the reasoning is at the stage it
+binds, and every position these replaced is in `docs/decisions-archive.md`.** Entries
+that merely restate the Data or Environments rules above are not repeated here.
 
-- **The patient mapping is S1's, not the naive rule's (2026-08-24).** 41 patients over
-  53 in-cohort samples, reproducing the paper exactly. `25183` is retained but flagged
-  `in_paper_cohort == False`; `MMY83942` folds into `83942`. The parser asserts all
-  three counts, because this mapping is the denominator of the headline metric.
-- **The `_N` suffixes are serial disease-course timepoints (2026-08-24, from S1).**
-  Not fractions, sorts or replicates. The longitudinal arm is real.
+**Infrastructure**
+- No Biowulf/HPC, no SINCLAIR — ~970 MB of data, no alignment step exists.
+- Five envs split by dependency-conflict risk, not one per stage; R stays quarantined in
+  `mm-qc` and `mm-annotation`; `scCODA` gets its own env if used.
+- Never `pip install` casually into a built env — rebuild from the yml.
+- The whole analysis runs in notebooks 01-12; `scripts/01-03` are a wrapped CLI fallback,
+  never reimplemented.
+- Notebooks carry the analysis; `src/` carries what is reusable, testable or fiddly.
+  Paired via jupytext, review on the `.py`.
+- Notebooks and `results/` numbered 04-12, matching 1:1; `src/` modules named by
+  function, never numbered. **Number order is execution order, no exceptions.**
+
+**Data and gene space** — full rules under "Data" above.
+- Custom `read_mtx` loader, not `scanpy.read_10x_mtx()`.
+- `56203_1` is repaired and retained; zero-filling is wrong.
+- Ensembl-ID join, verified and committed — **do not re-open, do not regenerate, and do
+  not search the raw files for an `ENSG` column.** Intersect, never union. The alias map
+  is a regression assertion only; the "drop ~52 ambiguous symbols" interim is superseded
+  and **must not be implemented**.
+- The patient mapping is S1's (41/53), not the naive rule's. The `_N` suffixes are serial
+  timepoints, so the longitudinal arm is real.
+- Ambient RNA correction is not attemptable — no unfiltered matrices are public.
+- The deposit is pre-filtered per cohort; the WashU 10,000-UMI ceiling is a real
+  confounder biased toward this project's hypothesis, carried as a covariate with a
+  sensitivity run owed at stage 08.
+
+**QC and integration**
+- MAD thresholds re-derived per this cohort **and per cohort within it**.
+- `pct_counts_in_top_20_genes` is reported but never filters — cutting on it deletes
+  antigen-**positive** plasma cells.
+- QC annotates, it does not delete. `scDblFinder` via an isolated `rpy2` bridge.
+- Harmony on `patient_id` + `n_genes_ref` + `cohort` survived a seven-arm benchmark and
+  is not re-opened. **On this dataset a standard global scIB ranking selects the wrong
+  method** — the immune compartment is scored, the plasma compartment only diagnosed, and
+  plasma mixing never contributes positively.
+- `R²(depth ~ latent)` is the depth statistic, for rotation-invariance. BBKNN is excluded
+  (graph, no embedding); scANVI/scGen are deferred, not rejected (they need stage-06
+  labels, which come from the embedding under selection).
+- Malignant subclustering is per-patient and un-integrated. **No integration method
+  restores cells that were never deposited.**
+
+**Annotation and cell state**
+- Annotation is decided empirically, per class, against F1 thresholds declared in advance
+  (0.95 / 0.90 / 0.85). Those numbers are **concordance, not accuracy**; the
+  marker-coverage test is the biological evidence and can veto a class.
+- `obs["cell_type"]` is the **only** load-bearing annotation output — which is what lets
+  the decision be revisited without touching stages 07-12.
+- Identity and state are separate axes: programs are continuous scores, never labels, and
+  never leak into `cell_type`.
+- No custom `celltypist` model for malignant states — it would force continuous tumor
+  substructure into discrete bins and hide the intermediates.
+
+**The metric and its defense**
+- Light-chain restriction by **ratio**, not presence/absence — IG genes are the most
+  ambient-contaminated in this tissue.
+- `infercnvpy` is required, not optional, with the agreement rate reported as a stage
+  output; a low rate halts the pipeline.
+- Normal-BM samples are controls, not filler — but that baseline is **marrow expression
+  context, not a safety axis**.
+- Dropout is **bounded, not corrected**, and is the larger of the two biases. The headline
+  metric is a bracketed interval, never a bare point estimate. `Σ P(A⁻)·P(B⁻)` is the
+  independence baseline, **not** a correction; the latent-class/EM model is the honest
+  correction and is deliberately deferred.
+- Binary calls stay primary; **imputation is forbidden for positivity calls** — whether a
+  transcript is genuinely absent is the entire question.
+- Co-negativity enrichment is a first-class result and its null is **depth-stratified**;
+  an unconditioned null would report enrichment from library size alone, biased toward
+  this project's own hypothesis.
+- Co-escape enrichment measures **eroded complementarity, not futility** — never write
+  that enrichment means dual targeting "doesn't help"; report incremental gain next to it.
+- Bootstrap at the level of the question: sample → cell within patient for a per-patient
+  CI; patient → sample → cell for cohort-level quantities. Single-sample patients get
+  optimistic CIs and this is stated.
+- **Risk tiers are the deliverable; ranking stability is the diagnostic.**
+- **No composite risk score, anywhere** — the inputs stay separate columns so a reader can
+  disagree with them.
+- Matched bulk validates **antigen abundance**, never the dual-negative fraction, which is
+  a joint quantity bulk destroys by construction. The two bulk cohorts are never pooled.
+- **"Subclone" requires CNV support**; level 3 reports *supported / not evaluable*, never
+  "no CNV subclone".
+- Pseudobulk DE with patient as replicate, never per-cell DE tests.
+- TC yes, UAMS 7-group no. TC is per-patient, descriptive, and labelled a **TC-like
+  expression subtype** — never a translocation call.
+- The γ-secretase hypothesis is pre-registered.
+- Stage 11 is exploratory and ranks ninth; patient is the unit of replication, escape
+  fraction is a continuous predictor, T/NK abundance is controlled.
+
+**Phase 2**
+- GSE117156 is confirmed; GSE118900 was evaluated and rejected; He et al. 2022 has no
+  data availability statement and is unusable.
+- **GSE117156 must never be merged with GSE223060** (MARS-seq vs 10x) — separate
+  `phase2_`-prefixed pipeline, distributional comparison only.
 
 ## Open questions to resolve during implementation
 
-- ~~**Patient mapping is unresolved**~~ — **CLOSED 2026-08-24 by S1.** 41 patients /
-  53 samples; see the Data section. Note S1 carries **no cytogenetics**, so the
-  disease-stage/karyotype annotation this list also wanted is only half-delivered:
-  stage and ISS yes, t(4;14)/1q21 no.
-- Whether any samples have paired scVDJ-seq for a stronger malignant-cell call
-  than the kappa/lambda proxy — check GEO supplementary files.
-- Disease stage (NDMM/RRMM/normal) and cytogenetic risk annotation per sample —
-  also needs Supplementary Table S1.
-- ~~Exact MAD thresholds~~ — **computed and documented 2026-08-24**, per cohort, in
-  `results/04_qc/qc_thresholds.csv` and summarised at stage 04. The derived
-  ambient-noise-floor antigen cutoff is still open and belongs to stage 08.
-- ~~**What the `_N` sample suffixes actually mean**~~ — **CLOSED 2026-08-24 by S1.**
-  Serial disease-course timepoints (`27522_1` Primary -> `_6` Relapse-3). The earlier
-  bulk/sc misalignment argument was a red herring; it reflects incomplete bulk
-  coverage of a shared index. The longitudinal arm is unblocked.
-- **How to treat the WashU 10,000-UMI censoring in the headline metric.** Stage 08
-  owes a truncate-all-cohorts-at-10k sensitivity analysis. If the patient ordering
-  survives it, the metric is robust to the censoring; if it does not, WU1/WU2's
-  escape fractions are partly an artifact of what the depositors removed and the
-  framing must say so. This is not optional — the bias points toward the hypothesis.
-- **The minimum malignant-cell inclusion threshold** for stage 08 — ≥50 cells is a
-  floor, not the answer (at n=50, one cell is 2%, so 1%/2%/3% escape are not
-  separable). Re-derive it from the smallest DN fraction the project intends to call
-  meaningful once the per-patient malignant-cell distribution is known; expect
-  100-200. Fixed before the ranking is looked at.
-- **How many patients survive that threshold.** Cohort cell counts vary ~15×
-  (min 480, median 2,555, max 7,937 cells/sample post-QC); if a large share of
-  patients fall below the malignant-cell minimum, the ranking's usable n may be
-  well under 41 and the framing must adjust honestly rather than quietly.
-- **Whether a published CITE-seq/flow calibration exists** for BCMA and GPRC5D
-  mRNA-vs-surface-protein correlation in myeloma — determines whether stage 12's
-  protein limitation can be quantified or only stated.
-- **Whether `infercnvpy` resolves sub-clonal CNV structure within a single patient's
-  clone at this depth** — gates level 3 of the stage-10 coherence hierarchy, and
-  therefore whether the project can use the word "subclone" at all. Determine per
-  patient and report resolution; do not assume either outcome.
-- **How much of any observed co-escape enrichment survives depth stratification** —
-  the gap between the unconditioned and depth-conditioned ratios is itself a
-  reportable number, and if the conditioned enrichment collapses to ~1 across the
-  cohort, that is a real (negative) finding about dual-antigen escape, not a failed
-  analysis.
+Closed questions (patient mapping, `_N` suffix meaning, MAD thresholds) have moved to
+`docs/decisions-archive.md`. What remains genuinely open:
+
+- **How to treat the WashU 10,000-UMI censoring in the headline metric.** Stage 08 owes
+  the truncate-all-cohorts-at-10k sensitivity analysis. If the patient ordering survives
+  it, the metric is robust to the censoring; if it does not, WU1/WU2's escape fractions
+  are partly an artifact of what the depositors removed and the framing must say so.
+  **Not optional — the bias points toward the hypothesis.**
+- **The minimum malignant-cell inclusion threshold** for stage 08 — ≥50 is a floor, not
+  the answer. Re-derive from the smallest DN fraction the project intends to call
+  meaningful once the per-patient distribution is known; expect 100-200. Fixed **before**
+  the ranking is looked at.
+- **How many patients survive that threshold.** Post-QC cell counts vary ~15× (min 480,
+  median 2,555, max 7,937 per sample); if many patients fall below the minimum the
+  ranking's usable n may be well under 41, and the framing must adjust honestly rather
+  than quietly.
+- **The ambient-noise-floor antigen cutoff** — derived at stage 08 from T/NK/myeloid
+  cells, still to be computed and documented with the population it came from.
+- **Whether `infercnvpy` resolves sub-clonal CNV within a single patient's clone at this
+  depth (1,521 median genes/cell in the plasma compartment)** — gates level 3 of the
+  stage-10 coherence hierarchy, and therefore whether the project can use the word
+  "subclone" at all. Determine per patient and report resolution; assume neither outcome.
+- **How much of any observed co-escape enrichment survives depth stratification** — the
+  gap between the unconditioned and conditioned ratios is itself a reportable number, and
+  if the conditioned enrichment collapses to ~1 across the cohort that is a real
+  (negative) finding about dual-antigen escape, not a failed analysis.
 - **Whether the stage-08 ranking survives restriction to `high`-confidence malignant
-  cells** (stage 07 tiers). If it does, the metric is robust to the weakest link in
-  its own denominator; if it does not, the CNV-inconclusive cells are driving it and
-  the framing must say so.
+  cells** (stage 07 tiers). If it does, the metric is robust to the weakest link in its
+  own denominator; if not, the CNV-inconclusive cells are driving it and the framing must
+  say so.
+- **Whether any samples have paired scVDJ-seq** for a stronger malignant call than the
+  kappa/lambda proxy — check GEO supplementary files.
+- **Whether a published CITE-seq/flow calibration exists** for BCMA and GPRC5D
+  mRNA-vs-surface-protein correlation in myeloma — determines whether stage 12's protein
+  limitation can be quantified or only stated.
+- **Per-sample disease stage for MMRF and WashU 2, and cytogenetics for anyone.** Neither
+  is in S1; neither is imputed. Cytogenetic risk annotation would need a source outside
+  this deposit.
