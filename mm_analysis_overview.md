@@ -87,6 +87,38 @@ entirely, turned out to be a perfectly ordinary sample whose gene-name file had 
 been cut off part-way through being written; BCMA was past the cut, not absent. It is
 repaired and kept.
 
+### Stage A2 — Line the samples up with each other, and check that choice
+Cells from 62 different samples can't be compared directly: the same cell type looks
+slightly different depending on which machine, kit and site produced it. **Integration**
+is the step that lines them up, so that a T cell from one patient sits next to a T cell
+from another instead of next to everything else from its own sample.
+
+We use a method called Harmony. But "we used the standard tool" isn't a reason, so we
+tested it: seven versions of the step were run side by side — no correction at all,
+Harmony, scVI and Scanorama each lining samples up three different ways — and scored
+with the standard benchmark for this exact question.
+
+**The scoring is where it got interesting, and where the standard approach would have
+misled us.** The usual benchmark rewards a method for mixing samples together. But
+recall that the WashU samples had their highest-RNA cells removed before deposit, and
+plasma cells are precisely the highest-RNA cells. So the WashU plasma cells and the
+MMRF plasma cells genuinely aren't the same population any more — part of one of them
+is simply missing. A benchmark that rewards mixing can't tell "these were correctly
+left apart" from "this method failed to mix them", so it hands the highest score to
+whichever method most aggressively squashes them together — which is inventing a
+correspondence that no longer exists.
+
+That is not hypothetical: the method that scored best on the conventional benchmark was
+mixing those plasma populations **thirteen times harder** than the one we kept, and
+another was doing it twenty times harder. So we scored the immune cells — where mixing
+genuinely should happen — and treated the plasma cells as something to *watch* rather
+than something to maximize. Under that rule, none of the alternatives beat the original
+choice, and Harmony stayed.
+
+Worth being clear about what this did **not** fix: no method of lining samples up can
+bring back cells that were never deposited. The missing-cells problem is still there
+and still has to be handled separately, further down.
+
 ### Stage B — Figure out what kind of cell each cell is
 A bone marrow sample isn't just tumor — it's tumor cells mixed in with T cells, NK
 cells, normal B cells, myeloid cells, and more. **Annotation** is the step where we
@@ -330,6 +362,12 @@ in the deliverable rather than waiting to be caught.
 - **The core metric is still something the original dataset's authors didn't
   compute** — this asks a new question of their data, not a reproduction of their paper.
 - **It still closes the loop from biology to a business-relevant conclusion.**
+- **Testing a default instead of inheriting it** — the integration step was
+  benchmarked against six alternatives rather than assumed, with the pass/fail rule
+  written down *before* the results were seen. The benchmark's own scoring had to be
+  adapted, because the standard version would have rewarded the method that most
+  aggressively merged two populations this dataset had already made incomparable.
+  The original choice survived, which is a result rather than a non-event.
 - **Recognizing and working around real data limitations** — raw reads only under
   dbGaP controlled access, no unfiltered matrices for ambient correction anywhere, a
   mixed-reference-build problem, three collection cohorts on different 10x chemistries,

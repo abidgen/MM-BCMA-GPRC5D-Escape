@@ -22,7 +22,8 @@ clonal heterogeneity rather than acquired resistance.
 1. Load and QC 62 bone marrow scRNA-seq samples (41 multiple myeloma patients + normal
    controls) from a public target-discovery dataset, using MAD-based (median absolute
    deviation) outlier filtering rather than fixed thresholds.
-2. Integrate across samples (Harmony), cluster, and annotate cell types **three ways —
+2. Integrate across samples (Harmony — benchmarked against scVI, Scanorama and an
+   unintegrated baseline with `scib-metrics`, and retained), cluster, and annotate cell types **three ways —
    manual marker panel, CellTypist, and SingleR — then choose per cell type against
    agreement thresholds fixed in advance**, rather than trusting one labeller.
 3. Identify malignant plasma cells via immunoglobulin light-chain restriction
@@ -144,6 +145,16 @@ composition and sensitivity, so the discordance has more than one possible cause
   supplementary table, and `83942`/`MMY83942` are one patient sampled under both
   WashU protocols. S1 carries **no cytogenetics**, so the t(4;14)/1q21 annotation
   remains unavailable and the TC subgroup call stays a transcriptional proxy.
+- **Batch integration is benchmarked, and its limits are measured.** Harmony was
+  compared against scVI, Scanorama and an unintegrated baseline across three batch
+  definitions (`scib-metrics`, immune compartment, provisional CellTypist labels). The
+  incumbent configuration was retained. The instructive part: on this dataset the arms
+  that score best on conventional scIB are the ones that **merge the cohort-censored
+  plasma populations** — up to 20x the incumbent's plasma mixing — because batch
+  metrics cannot distinguish "correctly left apart" from "failed to merge". Scoring is
+  therefore on the immune compartment only, with plasma mixing reported as a
+  diagnostic that is never optimized. **No integration method can restore cells that
+  were never deposited**, so this changes nothing about the censoring below.
 - **The deposit is pre-filtered, differently in each cohort.** WashU cohorts 1 and 2
   were cut at 10,000 UMIs before deposit; MMRF and the donors were not (MMRF was cut
   at 10% mitochondrial instead). Plasma cells are the highest-RNA-content cells in
@@ -155,7 +166,7 @@ composition and sensitivity, so the discordance has more than one possible cause
 
 ## Setup
 
-Four conda/mamba environments, split by actual dependency-conflict risk
+Five conda/mamba environments, split by actual dependency-conflict risk
 (see `CLAUDE.md` for the full reasoning):
 
 ```bash
@@ -163,6 +174,7 @@ mamba env create -f envs/env-qc.yml            # data loading, QC, scDblFinder (
 mamba env create -f envs/env-core.yml          # integration, annotation, malignant calling, scoring, robustness
 mamba env create -f envs/env-annotation.yml    # CellTypist + SingleR (isolates R, like env-qc)
 mamba env create -f envs/env-communication.yml # LIANA+ (CellChat-equivalent)
+mamba env create -f envs/env-integration.yml   # stage 05b only: every integration method + scib-metrics
 # envs/env-composition.yml (scCODA) only if the compositional analysis is run —
 # it pulls TensorFlow and is kept out of mm-core deliberately
 
@@ -171,6 +183,7 @@ mamba run -n mm-qc python -m ipykernel install --user --name mm-qc
 mamba run -n mm-core python -m ipykernel install --user --name mm-core
 mamba run -n mm-annotation python -m ipykernel install --user --name mm-annotation
 mamba run -n mm-communication python -m ipykernel install --user --name mm-communication
+mamba run -n mm-integration python -m ipykernel install --user --name mm-integration
 
 # make the package importable from notebooks (src/ layout). --no-deps is not
 # optional: envs/*.yml is the dependency manifest, and letting pip resolve into
@@ -182,13 +195,13 @@ mamba run -n mm-core pip install -e . --no-deps
 ### Tests
 
 ```bash
-mamba run -n mm-core pytest              # 89 pass, ~7 s, with the deposit present
+mamba run -n mm-core pytest              # 155 pass, ~27 s, with the deposit present
 mamba run -n mm-core pytest -m "not slow"   # skip the two full-cohort passes
 ```
 
 Two-tier on purpose: tests covering the Ensembl-ID gene-space join, the truncated-
 deposit repair and the required-gene assertions need no data at all and run on a fresh
-clone (51 pass, 39 skip). Tests that need the extracted deposit are gated and **skip
+clone (100 pass, 57 skip). Tests that need the extracted deposit are gated and **skip
 rather than fail**.
 
 ## Pipeline
@@ -214,6 +227,7 @@ python scripts/03_build_manifest.py raw/samples   # build sample -> file-path ma
 | 03 | `notebooks/03_build_manifest.ipynb` | `mm-qc` | `raw/sample_manifest.csv` |
 | 04 | `notebooks/04_qc.ipynb` | `mm-qc` | `results/04_qc/` |
 | 05 | `notebooks/05_integration_clustering.ipynb` | `mm-core` | `results/05_integration/` |
+| 05b | `notebooks/05b_integration_benchmark.ipynb` | `mm-integration` | `results/05b_benchmark/` |
 | 06 | `notebooks/06_annotation.ipynb` | `mm-annotation` | `results/06_annotation/` |
 | 07 | `notebooks/07_malignant_calling.ipynb` | `mm-core` | `results/07_malignant/` |
 | 08 | `notebooks/08_antigen_escape_fraction.ipynb` | `mm-core` | `results/08_escape_fraction/` |
@@ -240,7 +254,7 @@ behind each stage.
 ├── RESUME_HERE.md                         # session state — read first when resuming
 ├── mm_analysis_overview.md                # plain-language explanation of the approach
 ├── mm_dual_antigen_escape_pipeline.md     # pipeline walkthrough (narrative, not code)
-├── envs/                                  # four conda env specs, split by dependency risk
+├── envs/                                  # five conda env specs, split by dependency risk
 ├── src/mm_escape/                         # reusable/testable logic — importable, Codex-reviewable
 ├── tests/                                 # pytest suite; most of it runs without raw/
 ├── resources/                             # committed gene-space map + parsed GEO metadata
@@ -258,11 +272,17 @@ rebuilt in Python from scratch** — that R build is preserved in git history un
 `r-build-snapshot` tag and is not being ported; the dataset knowledge it earned
 carries forward via `CLAUDE.md`.
 
-Current state (2026-08-24): stages 01-03 written, executed and green. The four conda
-environments are built and verified. `src/mm_escape/` holds `config.py`,
-`gene_space.py` and `io.py`, covered by an 89-test suite. The full cohort — **62
-samples, 204,040 pre-QC cells** — loads and harmonizes to 32,991 genes with every
-required marker present. Stage 04's QC is the next thing to write.
+Current state (2026-08-24): **stages 01-05 plus 05b written, executed and green.**
+The five conda environments are built and verified. `src/mm_escape/` holds `config.py`,
+`gene_space.py`, `io.py`, `qc.py`, `integration.py` and `benchmark.py`, covered by a
+155-test suite.
+
+The full cohort — **62 samples, 204,040 pre-QC cells** — passes QC to **172,940 cells**
+and harmonizes to **32,991 genes** with every required marker present, in 30 Leiden
+clusters. Supplementary Table S1 has landed and closed the patient mapping at **41
+patients over 53 in-cohort samples**, matching the paper exactly. The integration step
+was benchmarked against six alternatives and the original choice retained. Stage 06
+(annotation) is the next thing to write.
 
 Two data-integrity findings are already baked in. The cross-reference gene join is on
 **reconstructed Ensembl IDs**, not symbols, which recovers 32,991 genes against 22,164

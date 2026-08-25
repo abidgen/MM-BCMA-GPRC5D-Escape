@@ -1,0 +1,88 @@
+# Stage 05b only — the integration-method benchmark.
+#
+# CLAUDE.md reserved an env for this ("If scVI-based integration is ever considered as
+# an alternative to Harmony, it gets its own separate env (env-scvi.yml) — not created
+# yet, only if actually needed"). It is needed now, but it is named for what it holds
+# rather than for one of its members: EVERY integration method under comparison lives
+# here, plus the scoring stack. `env-scvi.yml` would have undersold it.
+#
+#   harmonypy     the incumbent — must run beside its rivals, not in another env
+#   scvi-tools    the principled candidate: models counts and library size explicitly,
+#                 which is exactly this dataset's confound
+#   scanorama     a different (MNN/panorama) correction strategy
+#   bbknn         graph-level correction; installed but NOT in the primary scored
+#                 comparison — see below
+#   scib-metrics  the scoring framework
+#
+# WHY IT IS SEPARATE, AND WHY NOTHING HERE GOES INTO mm-core
+# ---------------------------------------------------------
+# scvi-tools pulls torch + lightning; scib-metrics pulls jax. Both are heavyweight and
+# version-brittle, and neither has anything to do with the core scanpy stack. mm-core
+# was destroyed once already by a casual `pip install decoupler==1.8.0`, which silently
+# downgraded numpy 2.5.2 -> 1.26.4 and broke scanpy, scipy, pydeseq2 and zarr at once;
+# the repair was to delete and recreate it from yml. That must not happen to it again
+# for a side-comparison whose result cannot move the headline metric.
+#
+# BBKNN IS INSTALLED BUT NOT SCORED
+# ---------------------------------
+# scib-metrics' Benchmarker scores `obsm` embeddings. BBKNN produces a corrected
+# neighbour *graph* and no embedding, so it cannot be placed on the same footing as the
+# other arms, and deriving an embedding from its graph would compare a different kind
+# of object. It is installed anyway because it is small and pure-Python, so keeping the
+# option of a graph-only side diagnostic costs nothing.
+#
+# celltypist IS HERE SO THE BENCHMARK IS SELF-CONTAINED
+# ------------------------------------------------------
+# scIB scores batch removal AGAINST biological conservation, and the bio half needs
+# cell-type labels. Ours come from stage 06, which consumes the very embedding this
+# benchmark is choosing — so the labels have to come from somewhere non-circular.
+# CellTypist classifies from log-normalized expression and never sees an embedding,
+# which breaks the loop. Run with `majority_voting=False`: majority voting uses an
+# over-clustering, which would smuggle an embedding straight back into the labels.
+# It is pure Python and already coexists with scanpy in env-core and env-annotation,
+# so it adds no conflict risk. Having it here means the whole benchmark runs in one
+# env rather than passing a CSV between two.
+#
+# GPU
+# ---
+# The machine has an RTX 5070: compute capability 12.0 (Blackwell / sm_120), driver
+# 595.84, CUDA 13.2. torch >= 2.7 ships sm_120 kernels, so the default Linux PyPI wheel
+# works. If `torch.cuda.is_available()` is False after building, check that first —
+# scVI still runs on CPU, just slowly.
+#
+# cxx-compiler IS LOAD-BEARING
+# ----------------------------
+# Scanorama depends on `annoy`, which publishes no cp312 wheel and so builds from
+# source. Without a compiler in the env the pip stage fails with
+# `error: [Errno 2] No such file or directory: 'g++'` and takes the whole env with it.
+# There is no system g++ on this machine, and conda-forge's `python-annoy` is py39-only,
+# so the compiler has to come from the env itself.
+name: mm-integration
+channels: [conda-forge, bioconda]
+dependencies:
+  - python=3.12
+  - cxx-compiler       # for annoy's source build; see above — do not remove
+  - scanpy=1.11
+  - anndata
+  - celltypist       # provisional benchmark labels; see below
+  - harmonypy
+  - leidenalg
+  - python-igraph
+  - pandas
+  - numpy
+  - scipy
+  - scikit-learn
+  - matplotlib
+  - seaborn
+  - jupyterlab
+  - ipykernel
+  - jupytext
+  - pytest
+  - pip
+  - pip:
+      # Not on conda-forge/bioconda at usable versions; pinned here so a rebuild
+      # reproduces them rather than someone pip-installing into a live env.
+      - scvi-tools==1.5.0
+      - scib-metrics==0.6.0
+      - scanorama==1.7.4
+      - bbknn==1.6.0

@@ -9,7 +9,7 @@
 cd /media/wrath/CART_mm_dual_antigen
 git status --short                   # expect no output (clean tree)
 git branch                          # expect only `main`
-conda run -n mm-core pytest -q       # expect 131 passed, 2 skipped, ~24 s
+conda run -n mm-core pytest -q       # expect 155 passed, 2 skipped, ~27 s
 ls results/04_qc/samples | wc -l     # expect 62 (stage 04 checkpoints)
 ls -la results/05_integration/integrated.h5ad   # expect ~1.3 GB
 ```
@@ -33,12 +33,13 @@ verified on all 62 samples, QC/doublet-removal run on the full 61-sample cohort,
 integration not yet run) before switching to Python. **None of the R code is being
 ported.** All dataset knowledge carries forward via `CLAUDE.md`.
 
-**Stages 01-03 are complete, and stage 04's loader is done.** All three acquisition
+**Stages 01-03 are complete, and so is stage 04's loader.** All three acquisition
 notebooks run green (62/62 `triplet-ok`, manifest byte-identical via CLI and notebook).
-The four conda envs are built with kernels registered. `src/mm_escape/` holds
-`config.py`, `gene_space.py` and `io.py`, covered by an 89-test suite in `tests/`.
-The whole cohort — **62 samples, 204,040 pre-QC cells** — loads in ~2 s and harmonizes
-to 32,991 genes with all 65 required genes present.
+The **five** conda envs are built with kernels registered (`mm-integration` joined on
+2026-08-24 for stage 05b). `src/mm_escape/` holds `config.py`, `gene_space.py`, `io.py`,
+`qc.py`, `integration.py` and `benchmark.py`, covered by a **155-test** suite in
+`tests/`. The whole cohort — **62 samples, 204,040 pre-QC cells** — loads in ~2 s and
+harmonizes to 32,991 genes with all 65 required genes present.
 
 **Stage 04 is now done too, and Supplementary Table S1 has landed.** 204,040 pre-QC
 cells -> **172,940 kept (84.8%)**, per-cohort MAD thresholds derived and documented,
@@ -50,6 +51,12 @@ numbers, and confirmed the `_N` suffixes are serial disease-course timepoints.
 **Stage 05 is done too.** 172,940 cells x **32,991 genes**, 30 Leiden clusters,
 `results/05_integration/integrated.h5ad`. Harmony converged in 4 iterations. The gene
 space came out exactly as predicted: 22,164 on symbols -> 32,991 on Ensembl IDs.
+
+**Stage 05b (integration benchmark) is also done.** Seven arms scored with
+`scib-metrics`; **no arm qualified and Harmony's stage-05 configuration stays**. The
+arms that scored best on conventional scIB were the ones merging the cohort-censored
+plasma populations (up to 20x), which is what the immune-only scoring rule existed to
+catch. Stage 05's output is unchanged.
 
 **>> The next artifact is `src/mm_escape/annotation.py` + `notebooks/06_annotation.ipynb`, in `mm-annotation`. <<**
 Nothing from stage 06 onward exists.
@@ -897,8 +904,12 @@ BCMA-negative ones.** The panel is deliberately not forced into the HVG set.
     plasma-like   22,477   5,036   4,888     4.5x
 
 MMRF's two biggest plasma clusters are 68% and 88% above 10,000 UMIs — cells WashU
-cannot contain. WashU's press against the ceiling instead. Harmony is not failing; the
-populations differ. Two regression tests pin this.
+cannot contain. WashU's press against the ceiling instead. Harmony is not failing: what
+separates the compartments is a **non-recoverable sampling/censoring asymmetry**, not
+established cohort biology — WashU's observed plasma distribution is missing its
+high-RNA portion, so no one-to-one correspondence remains to recover. Two regression
+tests pin this. (Earlier wording said "the populations differ", which implied a
+biological claim the data does not support.)
 
 ### One defect found and fixed
 
@@ -923,9 +934,89 @@ cross-module file.
 
 ---
 
+## 2026-08-24 — stage 05b: the integration benchmark, and what it caught
+
+Stage 05 used Harmony because it was the default. `sc-best-practices`' integration
+chapter says to run several methods and score them with scIB rather than assume, so
+that gap is now closed. **The incumbent survived — and how it survived is the
+interesting part.**
+
+### Setup
+
+`envs/env-integration.yml` -> **`mm-integration`**: every integration method under
+comparison plus the scoring stack in one env (harmonypy, scvi-tools, scanorama, bbknn,
+scib-metrics, celltypist). torch 2.13.0+cu130 on the RTX 5070 (sm_120) works; anndata
+0.13.2 matches `mm-core` exactly. Two build traps: **`cxx-compiler` is load-bearing**
+(Scanorama needs `annoy`, which has no cp312 wheel and builds from source; there is no
+system g++ and conda-forge's `python-annoy` is py39-only), and **`bbknn` is installed
+but not scored** (it yields a graph, not an embedding, so `Benchmarker` cannot place it
+on the same footing).
+
+### The result
+
+Seven arms, scored on the **immune compartment** against provisional CellTypist labels,
+all scored on `cohort` regardless of what they corrected on:
+
+    arm                batch    bio    depth R2   plasma mixing   vs incumbent
+    unintegrated       0.450   0.691     0.660        0.014       depth +0.291
+    harmony_sample     0.615   0.718     0.509        0.515       depth +0.140, plasma 13.5x
+    scvi_sample        0.570   0.701     0.541        0.452       depth +0.172, plasma 11.8x
+    scanorama_sample   0.450   0.723     0.690        0.161       depth +0.321
+    harmony_stage05    0.427   0.700     0.369        0.038       -- (incumbent)
+    harmony_cohort     0.591   0.706     0.607        0.771       depth +0.238, plasma 20.2x
+    scvi_cohort        0.492   0.690     0.576        0.017       depth +0.207
+
+**No arm qualified. `harmony_stage05` stays.**
+
+**The arms that win on conventional scIB are precisely the arms that merge the censored
+plasma populations.** `harmony_sample` posts the best batch *and* bio scores while
+mixing plasma **13.5x** harder than the incumbent and encoding more depth;
+`harmony_cohort` reaches **20.2x**. The two arms that leave those populations apart
+(`unintegrated`, `scvi_cohort`) are the ones with no real batch gain. **A standard
+global scIB benchmark would have picked `harmony_sample`** — which buys its score by
+fusing populations that cannot be fused. That is exactly the failure mode the scoring
+design was built to catch, and it happened.
+
+The incumbent is simultaneously the **worst batch corrector** (0.427, below
+unintegrated's 0.450) and by a wide margin the **least depth-encoding** (R² 0.369 vs
+0.51-0.69) and **least plasma-merging** (0.038).
+
+**Stated honestly:** `depth_ok` did all the gating — every non-incumbent arm failed the
++0.05 tolerance, which was fixed before the 0.37-0.69 spread was known. Two things stop
+that being a threshold artifact: `harmony_sample`, `scvi_sample` and `harmony_cohort`
+**independently fail `overcorrection_ok`** and lose even with depth removed entirely;
+and relaxing depth enough to admit anything admits only the two weakest-batch arms. The
+tolerance is **not** re-tuned after the fact.
+
+**Bonus finding: scVI encodes depth in plasma cells.** Plasma R²(depth ~ latent) is
+0.793 / 0.850 for the scVI arms against the incumbent's 0.528 and `harmony_sample`'s
+0.319 — its explicit library-size model appears to put depth *into* the latent space for
+the one compartment where depth is the confound, the opposite of why it was the
+principled candidate.
+
+### Design points worth not re-deriving
+
+- **Immune scored, plasma diagnosed.** Batch metrics cannot tell "correctly left apart"
+  from "failed to merge"; plasma mixing never contributes positively.
+- **`R²(depth ~ latent)`, fixed in advance**, because R² depends only on the column span
+  and is rotation-invariant — latent axes are arbitrary across methods.
+- **Labels are CellTypist with `majority_voting=False`** — voting uses an
+  over-clustering, which would smuggle an embedding back into the labels. `ILC` was
+  verified to be NK (NKG7 98.7%), and `Immune_All_High` *does* cover erythroid/HSPC
+  here, so no hand-set marker thresholds enter the benchmark.
+- **scANVI/scGen deferred**, not rejected: they need stage-06 labels, and stage 06
+  consumes the embedding under selection.
+- **The benchmark cannot undo the censoring.** Stage 08 still owes its
+  truncate-all-cohorts-at-10,000 sensitivity analysis whatever wins here.
+
+Test suite: **155 passed, 2 skipped** in `mm-core`; **100 passed, 57 skipped** on a
+fresh clone.
+
+---
+
 ## Status
 
-Stages 01-05 complete and green. Envs built, kernels registered, gene space solved and
+Stages 01-05 plus 05b complete and green. Envs built, kernels registered, gene space solved and
 committed, S1 parsed, QC run on the full cohort. Architecture stable.
 
 **Next artifact: `src/mm_escape/annotation.py` + `notebooks/06_annotation.ipynb`,

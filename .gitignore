@@ -58,6 +58,12 @@ raw/*_series_matrix.txt.gz
 *.joblib
 *.feather
 *.parquet
+# Per-cell intermediate tables. These are one row per cell (172,940 of them), which
+# is megabytes of CSV that is not a deliverable and is cheaply regenerable — the
+# stage-05b labels take ~20 s from the committed model. Same call as stage 04, which
+# deliberately writes no pooled obs table at all.
+results/**/provisional_labels.csv
+
 # Everything else under results/ (CSV, PNG, PDF, SVG, JSON, MD) is committed by
 # default — those are the actual deliverables. No negation rules needed, since
 # nothing above excludes a directory.

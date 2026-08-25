@@ -203,6 +203,41 @@ samples sit on the newer 33538 build while the four `ND_*` donors sit on the old
 captures which chemistry and protocol generated it, and that is where the ~1.9× depth
 difference lives. Neither substitutes for the other.
 
+### Stage 05b — the integration method is benchmarked, not assumed (2026-08-24)
+
+Harmony was chosen above because it was the obvious default.
+`notebooks/05b_integration_benchmark.ipynb` (env `mm-integration`) tests that, running
+seven arms — unintegrated, Harmony / scVI / Scanorama on `sample_name`, the stage-05
+configuration, and Harmony / scVI on `cohort` — scored with `scib-metrics` against
+provisional CellTypist labels. It reads stage 05's output **read-only** and asserts the
+file is byte-identical afterwards.
+
+**Scoring is on the immune compartment only, and that is the design's whole point.**
+scIB's batch metrics cannot distinguish *"correctly left apart"* from *"failed to
+merge"*. Because WashU was cut at 10,000 UMIs before deposit, an aggressive method can
+fuse the plasma populations and score better while manufacturing correspondence that is
+not recoverable. So plasma mixing is **reported as a diagnostic and never optimized**.
+
+**Result: no arm qualified; the stage-05 configuration stays.** And the reason is the
+one the design predicted:
+
+| arm | batch | bio | depth R² | plasma mixing vs incumbent |
+|---|---|---|---|---|
+| `harmony_sample` | **0.615** | **0.718** | 0.509 | **13.5×** |
+| `harmony_cohort` | 0.591 | 0.706 | 0.607 | **20.2×** |
+| `scvi_sample` | 0.570 | 0.701 | 0.541 | **11.8×** |
+| **`harmony_stage05`** | 0.427 | 0.700 | **0.369** | 1.0× |
+
+The arms that win on conventional scIB are exactly the arms that merge the censored
+plasma populations, while the incumbent — worst on batch mixing — encodes far less
+depth (R² 0.369 vs 0.51–0.69) and leaves those populations apart. **A standard global
+scIB ranking would have selected `harmony_sample`.**
+
+Two caveats recorded rather than buried: the depth criterion did all the gating (though
+three arms fail the overcorrection criterion independently of it), and **no integration
+method can restore cells that were never deposited** — Stage 08 still owes its
+truncate-all-cohorts-at-10,000 sensitivity analysis whatever wins here.
+
 **Integration is deliberately confined to the immune compartment.** Harmonizing on
 `patient_id` is right for T/NK/myeloid cells, which should look alike across
 patients. It is actively risky for the tumor: the malignant clone is patient-private

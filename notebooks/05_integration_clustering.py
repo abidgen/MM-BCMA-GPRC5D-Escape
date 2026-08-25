@@ -398,10 +398,19 @@ display(ceiling.head(6).round(1))
 #   WashU deposits *cannot contain*, because WashU was truncated at that ceiling.
 #   WashU's plasma clusters instead pile up just under it.
 #
-# So Harmony is not failing on plasma cells. **The populations genuinely differ**, and
-# no batch-correction method restores cells that were never deposited. The
-# compartment-specificity follows directly: T, NK, myeloid and B cells sit well below
-# 10,000 UMIs in every cohort, so the ceiling never touched them.
+# So Harmony is not failing on plasma cells. What separates them is a **non-recoverable
+# sampling/censoring asymmetry** — WashU's *observed* plasma-cell distribution is
+# missing its high-RNA portion, so **no one-to-one population correspondence remains
+# for any method to recover**, and no batch-correction method restores cells that were
+# never deposited.
+#
+# Note the careful phrasing: this is deliberately **not** a claim that the cohorts have
+# biologically different plasma cells. It is a claim about what was sampled, which is
+# both better supported and a stronger argument — it holds regardless of whether any
+# biological difference exists.
+#
+# The compartment-specificity follows directly: T, NK, myeloid and B cells sit well
+# below 10,000 UMIs in every cohort, so the ceiling never touched them.
 #
 # This upgrades the stage-04 censoring finding from a plausible explanation to a
 # measured one, and makes stage 08's **truncate-all-cohorts-at-10,000 sensitivity

@@ -820,7 +820,8 @@ afterwards rather than patching it.
 | `mm-annotation` | celltypist 1.7.1, rpy2 3.5.11; **R 4.3.3 + SingleR 2.4.0 + celldex 1.12.0**, both `NovershternHematopoieticData` and `HumanPrimaryCellAtlasData` present |
 | `mm-communication` | liana 1.8.1 with **both `liana.mt.cellchat` and `liana.mt.rank_aggregate`**, omnipath 1.0.12 |
 
-Kernels registered for all four (`mm-qc`, `mm-core`, `mm-annotation`, `mm-communication`),
+Kernels registered for all four (`mm-qc`, `mm-core`, `mm-annotation`, `mm-communication`)
+— plus `mm-integration` on 2026-08-24 (stage 05b),
 each kernelspec confirmed to point at its own interpreter.
 
 **Note `mm-communication` deliberately runs a different scanpy/anndata** (1.12.3 /
@@ -829,8 +830,30 @@ and pinning it would over-constrain liana's already version-sensitive tree. Stag
 reads `.h5ad` written by `mm-core`, so the two only meet on disk; if a forward/backward
 `.h5ad` compatibility problem ever appears, that version gap is the first place to look.
 
-**If scVI-based integration is ever considered as an alternative to Harmony**, it
-gets its own separate env (`env-scvi.yml`) — not created yet, only if actually needed.
+**`envs/env-integration.yml`** — stage 05b only (the integration-method benchmark).
+**Built 2026-08-24**, fulfilling the reservation this section previously carried ("if
+scVI-based integration is ever considered as an alternative to Harmony, it gets its own
+separate env (`env-scvi.yml`) — not created yet, only if actually needed"). It is named
+for what it holds rather than for one member: **every** integration method under
+comparison lives here, plus the scoring stack — `harmonypy` (the incumbent, which must
+run beside its rivals), `scvi-tools`, `scanorama`, `bbknn`, `scib-metrics`, and
+`celltypist` for the benchmark's provisional labels.
+
+Verified: torch **2.13.0+cu130**, CUDA available, RTX 5070 at compute capability
+**12.0 (Blackwell / sm_120)**; scvi-tools 1.5.0, scib-metrics 0.6.0, scanorama 1.7.4,
+bbknn 1.6.0, celltypist 1.7.1, harmonypy 2.0.0; scanpy 1.11.5 and **anndata 0.13.2,
+matching `mm-core` exactly** so the stage-05 `.h5ad` reads without a version gap.
+
+Two build traps, both hit for real:
+- **`cxx-compiler` is load-bearing.** Scanorama depends on `annoy`, which publishes no
+  cp312 wheel and builds from source. Without a compiler *in the env* the pip stage
+  dies with `error: [Errno 2] No such file or directory: 'g++'` and takes the whole env
+  with it. There is no system `g++` on this machine and conda-forge's `python-annoy` is
+  py39-only, so the compiler has to come from the env itself.
+- **`bbknn` is installed but not scored.** `scib-metrics`' `Benchmarker` scores `obsm`
+  embeddings; BBKNN yields a corrected neighbour *graph* and no embedding, so it cannot
+  be placed on the same footing. It is installed anyway because it is small and pure
+  Python, keeping a graph-only side diagnostic possible.
 
 ---
 
@@ -891,6 +914,7 @@ no stage you cannot open and step through:
 | 03 | `notebooks/03_build_manifest.ipynb` | `mm-qc` | `raw/sample_manifest.csv` |
 | 04 | `notebooks/04_qc.ipynb` | `mm-qc` | `results/04_qc/` |
 | 05 | `notebooks/05_integration_clustering.ipynb` | `mm-core` | `results/05_integration/` |
+| 05b | `notebooks/05b_integration_benchmark.ipynb` | `mm-integration` | `results/05b_benchmark/` |
 | 06 | `notebooks/06_annotation.ipynb` | `mm-annotation` | `results/06_annotation/` |
 | 07 | `notebooks/07_malignant_calling.ipynb` | `mm-core` | `results/07_malignant/` |
 | 08 | `notebooks/08_antigen_escape_fraction.ipynb` | `mm-core` | `results/08_escape_fraction/` |
@@ -976,9 +1000,12 @@ break schema parity with the script.
   Ensembl-ID join, the `make.unique` reimplementation, the `56203_1` truncation
   repair, the required-gene assertions, the GEO metadata join — are exercised entirely
   by what is committed under `resources/`. On a fresh clone with no `raw/`:
-  **51 pass, 39 skip.**
+  **100 pass, 57 skip.**
 - **Data-backed tests are gated on `raw/` and skip rather than fail**, via
-  `conftest.requires_data`. With the deposit present: **89 pass, 1 skip, ~7 s.**
+  `conftest.requires_data`. With the deposit present: **155 pass, 2 skip, ~27 s.**
+  Two further gates were added later: `requires_s1` (Supplementary Table S1 is a
+  journal file, not part of the GEO deposit) and `requires_r` (scDblFinder lives
+  only in `mm-qc`, and the suite's home `mm-core` carries no R).
 
 `pytest -m "not slow"` skips the two full-cohort passes. Data-backed tests run over
 the four canonical samples in `conftest.CANONICAL_SAMPLES`, chosen because they cover
@@ -1116,7 +1143,9 @@ genes the harmonization recovers, so a regression here is visible rather than si
 and the cohort are different axes and neither substitutes for the other (two WU1
 samples sit on the 33538 build, the four `ND_*` donors on 33694), Leiden clustering,
 UMAP. Diagnostic UMAP colored by reference version (`n_genes_ref`) to confirm the
-intersection actually neutralized processing batch.
+intersection actually neutralized processing batch. **This three-covariate Harmony
+configuration was benchmarked against six alternatives at stage 05b (2026-08-24) and
+retained** — it is now a tested choice rather than a default.
 
 **RUN AND COMPLETE 2026-08-24.** 172,940 cells x **32,991 genes**, 30 Leiden
 clusters, `results/05_integration/integrated.h5ad` (1.3 GB gzipped). Whole pipeline
@@ -1190,8 +1219,13 @@ PCs 31-50 add only 2.7 points, so the count is generous rather than load-bearing
    above 10,000 UMIs — cells the WashU deposits cannot contain, because WashU was cut
    at that ceiling. WashU's plasma clusters instead press up against it (7.5-8.3% of
    cells in the 9,000-9,999 band, against 1.2% for MMRF's cluster 7). So Harmony is not
-   failing; **the populations genuinely differ**, and no correction restores cells that
-   were never deposited. The compartment-specificity follows: T/NK/myeloid/B sit well
+   failing on plasma cells: what separates them is a **non-recoverable
+   sampling/censoring asymmetry**, not established biology. WashU's *observed*
+   plasma-cell distribution is missing its high-RNA portion, so **no one-to-one
+   population correspondence remains for any method to recover**, and no correction
+   restores cells that were never deposited. (An earlier wording here said "the
+   populations genuinely differ", which implied biological divergence between cohorts
+   and claimed more than the data supports.) The compartment-specificity follows: T/NK/myeloid/B sit well
    below 10,000 UMIs everywhere, so the ceiling never touched them, and Harmony mixes
    them to 0.75. `results/05_integration/depth_by_compartment.csv` and
    `plasma_cluster_depth.csv`; two regression tests pin the asymmetry.
@@ -1217,6 +1251,155 @@ project exists to measure. Therefore:
   are therefore integration-independent** — this is what contains the risk, and it
   is the answer to "did Harmony distort your escape fractions?" (it cannot; the
   calls never touch the embedding).
+
+**05b — Integration-method benchmark** (`notebooks/05b_integration_benchmark.ipynb`,
+`src/mm_escape/benchmark.py`; env: **`mm-integration`**). Added 2026-08-24.
+`results/05b_benchmark/`.
+
+**Why `05b` and not a number.** Number order is execution order with no exceptions.
+This is a side-comparison feeding the stage-05 *choice*, not a new pipeline stage, so
+it takes a letter rather than displacing annotation. It reads
+`results/05_integration/integrated.h5ad` **read-only** and asserts the file is
+byte-identical afterwards; candidate embeddings live in `05b_benchmark/` until a winner
+is picked.
+
+**Why it exists.** Stage 05 used Harmony because it was the obvious default, never
+because it beat anything. `sc-best-practices`' integration chapter recommends running
+several methods and scoring them with scIB rather than assuming one wins.
+
+**Why the scoring is deliberately NOT standard scIB — the design point that matters
+more than the leaderboard.** scIB's batch metrics cannot distinguish *"correctly left
+apart"* from *"failed to merge"*. Given stage 04's censoring, a method that squashes
+the three plasma islands together scores better on kBET/iLISI while manufacturing
+correspondence where none is recoverable. **A naive global ranking would structurally
+reward overcorrection on this dataset.** Therefore:
+
+- **The immune compartment is scored; the plasma compartment is diagnosed.** Global
+  scIB is computed and reported as a **secondary reference, never used for selection**.
+- Plasma mixing **never contributes positively**. A jump alone flags an arm for
+  inspection; a jump **together with** rising depth association disqualifies it, that
+  pair being the signature of the censoring being smoothed over.
+
+**Arms — one common batch key, plus reference arms.** All scored on `cohort` regardless
+of what they corrected on: with three different batch definitions in play, scoring each
+against its own key would compare seven different *questions* rather than seven
+*methods*. `cohort` is the common axis, samples nest inside it, and it is where the
+demonstrated distortion lives.
+
+| arm | corrects on |
+|---|---|
+| `unintegrated` | — (`X_pca`, same HVGs/scaling/PCs) |
+| `harmony_sample`, `scvi_sample`, `scanorama_sample` | `sample_name` |
+| `harmony_stage05` *(incumbent)* | `patient_id` + `n_genes_ref` + `cohort` |
+| `harmony_cohort`, `scvi_cohort` | `cohort` |
+
+`sample_name` is the true technical unit, but **42 of 50 patients contribute exactly
+one sample**, so `sample_name` and `patient_id` are nearly the same partition and
+"avoid correcting on patient" is weaker than it looks. **`cohort` is the only batch
+definition not confounded with patient**, which is why it is a real arm.
+
+**Labels are provisional CellTypist, deliberately embedding-independent.** scIB scores
+batch removal *against* bio conservation, and the bio half needs labels — which come
+from stage 06, which consumes the embedding under selection. CellTypist breaks that
+circle by classifying from expression. **`majority_voting=False` is load-bearing**:
+majority voting smooths over an over-clustering, which would smuggle an embedding back
+into the labels. Two things were checked rather than assumed:
+- **`Immune_All_High`'s `ILC` class is NK** (8% of marrow; NKG7 98.7%, GNLY 92.2%,
+  KLRD1 85.9%, MS4A1 1.3%).
+- **It does cover erythroid and HSPC here**, contrary to the expectation recorded
+  elsewhere in this document that an immune-only reference would be blind to them
+  (Erythroid 14,103 cells at HBB 99.7%; HSC/MPP 2,625 at CD34 58.4%). So **no hand-set
+  marker thresholds enter the benchmark at all.**
+
+**The decision rule is declared before running** (`benchmark.DECISION_TOLERANCES`),
+exactly as stage 06 pre-declares its F1 thresholds. A method replaces the incumbent only
+if all four hold: `batch_improved`, `bio_preserved`, `depth_ok`, `overcorrection_ok`.
+The verdict is **computed, not narrated** — `decision.csv` is the source of truth and
+`decision.md` is rendered from it. **Harmony is allowed to win**, including against a
+higher conventional global scIB score.
+
+`depth_ok` uses **`R²(log1p(total_counts) ~ latent)`**, fixed in advance. R² depends
+only on the embedding's **column span** and is therefore **rotation-invariant** — latent
+axes are arbitrary across methods, so a per-dimension `max |Spearman|` would rank
+methods on an accident of their parameterisation.
+
+**PRIMARY RESULT (immune compartment, scored on `cohort`):**
+
+| arm | batch correction | bio conservation | total |
+|---|---|---|---|
+| unintegrated | 0.450 | 0.691 | 0.595 |
+| **`harmony_sample`** | **0.615** | **0.718** | **0.677** |
+| `scvi_sample` | 0.570 | 0.701 | 0.649 |
+| `scanorama_sample` | 0.450 | 0.723 | 0.614 |
+| **`harmony_stage05` (incumbent)** | **0.427** | 0.700 | 0.591 |
+| `harmony_cohort` | 0.591 | 0.706 | 0.660 |
+| `scvi_cohort` | 0.492 | 0.690 | 0.611 |
+
+**The headline is about configuration, not method.** Harmony wins — but the stage-05
+*configuration* is the **worst batch corrector of all seven arms (0.427), below even no
+integration at all (0.450)**, while plain Harmony on `sample_name` leads on batch
+removal *and* is second only to Scanorama on bio conservation. Correcting on
+`patient_id` + `n_genes_ref` + `cohort` apparently split the correction across
+covariates rather than strengthening it. **This finding exists only because the
+incumbent was entered as its own arm rather than assumed**, and it is the argument for
+doing the benchmark at all.
+
+**VERDICT: no arm qualified — `harmony_stage05` stays.** Which is the outcome the rule
+was explicitly written to allow, and the reason for writing it in advance.
+
+The full table (`results/05b_benchmark/decision.csv`, rendered into `decision.md`):
+
+| arm | batch | bio | depth R² | plasma mixing | vs incumbent | eligible |
+|---|---|---|---|---|---|---|
+| unintegrated | 0.450 | 0.691 | 0.660 | 0.014 | depth +0.291 | no |
+| `harmony_sample` | **0.615** | **0.718** | 0.509 | 0.515 | depth +0.140, plasma **13.5x** | no |
+| `scvi_sample` | 0.570 | 0.701 | 0.541 | 0.452 | depth +0.172, plasma **11.8x** | no |
+| `scanorama_sample` | 0.450 | 0.723 | 0.690 | 0.161 | depth +0.321 | no |
+| **`harmony_stage05`** | 0.427 | 0.700 | **0.369** | **0.038** | — | (incumbent) |
+| `harmony_cohort` | 0.591 | 0.706 | 0.607 | 0.771 | depth +0.238, plasma **20.2x** | no |
+| `scvi_cohort` | 0.492 | 0.690 | 0.576 | 0.017 | depth +0.207 | no |
+
+**The arms that win on conventional scIB are precisely the arms that merge the censored
+plasma populations.** `harmony_sample` posts the best batch *and* bio scores — and
+mixes the plasma compartment **13.5x** harder than the incumbent while encoding more
+depth. `harmony_cohort` reaches **20.2x**. Meanwhile the two arms that leave the plasma
+populations apart (`unintegrated` 0.014, `scvi_cohort` 0.017) are the ones with no
+meaningful batch gain. **A standard global scIB benchmark would have selected
+`harmony_sample`**, which buys its higher score substantially by fusing populations that
+cannot be fused. That is the failure mode this design was built to catch, and it
+occurred.
+
+The incumbent is simultaneously the **worst batch corrector (0.427, below unintegrated's
+0.450)** and by a wide margin the **least depth-encoding (R² 0.369 against 0.51-0.69)**
+and the **least plasma-merging (0.038)**. Correcting on `patient_id` + `n_genes_ref` +
+`cohort` evidently trades cohort mixing for exactly the properties this dataset needs.
+
+**Stated honestly: `depth_ok` did all the gating.** Every non-incumbent arm failed it,
+so the +0.05 tolerance — fixed before the spread (0.37-0.69) was known — is what
+produced a clean sweep. Two things keep that from being a threshold artifact:
+`harmony_sample`, `scvi_sample` and `harmony_cohort` **independently fail
+`overcorrection_ok`**, so they lose even with the depth criterion removed entirely; and
+relaxing depth enough to admit anything admits only `scanorama_sample` and
+`scvi_cohort`, the two arms with the weakest batch gains. The tolerance is **not**
+re-tuned after the fact — doing so is precisely the post-hoc rationalisation
+pre-declaration exists to prevent.
+
+**Also recorded: scVI encodes depth in plasma cells, badly.** Plasma-compartment
+R²(depth ~ latent) is 0.793 (`scvi_sample`) and 0.850 (`scvi_cohort`) against the
+incumbent's 0.528 and `harmony_sample`'s 0.319. Its explicit library-size model appears
+to put depth *into* the latent space for the compartment where depth is the
+confound — the opposite of the reason it was the principled candidate.
+
+Runtimes (RTX 5070): Harmony ~15 s per arm, Scanorama ~119 s, scVI ~190 s.
+
+**What the benchmark cannot do, and this must be propagated to stage 08.** **No
+integration method restores cells that were never deposited.** A well-mixed latent
+space has not undone the ascertainment bias in the raw counts stage 08 reads. Whichever
+arm wins, **stage 08 still owes its truncate-all-cohorts-at-10,000 sensitivity
+analysis** — selecting a fancier method must not create the impression the censoring was
+"handled". And nothing here can move `frac_double_negative` at all: the embedding feeds
+only stages 06 and 11, antigen calls read `layers["counts"]`, and malignant
+subclustering is per-patient un-integrated.
 
 **06 — Annotation** (`notebooks/06_annotation.ipynb`, `src/mm_escape/annotation.py`;
 env: **`mm-annotation`**). **Three methods are run and compared, and the choice is
@@ -1850,7 +2033,8 @@ The final stage; consumes the output of everything upstream. Assembles:
 
 ## Status / immediate next step
 
-**Stages 01-05 are run and verified. Stage 06 (annotation) is the next artifact.**
+**Stages 01-05 plus 05b are run and verified. Stage 06 (annotation) is the next
+artifact.**
 The working tree is clean (R build removed, preserved under `r-build-snapshot`), `raw/`
 is intact at 62 samples, `scripts/01-03` are confirmed (62/62 `triplet-ok`), notebooks
 01-03 are written and executed, the four `envs/*.yml` are built with kernels
@@ -1882,6 +2066,11 @@ and the pre-filtering correction — both are load-bearing for stage 08.
 resolved (41 patients / 53 in-cohort samples), the `_N` suffixes are confirmed as
 serial timepoints, and clinical covariates reach every cell. The S1 policy below is
 therefore mostly discharged — see it for what remains.
+
+**Stage 05b's benchmark is run (2026-08-24) and the incumbent survived it** — see the
+stage-05b entry above. `envs/env-integration.yml` is built and `mm-integration` is
+registered; `src/mm_escape/benchmark.py` and `tests/test_benchmark.py` (24 data-free
+tests) are committed. Nothing about stage 05's output changed as a result.
 
 **`integration.py` and `notebooks/05_integration_clustering.ipynb` are written and
 run (2026-08-24).** 172,940 x 32,991, 30 clusters, embedding in
@@ -2149,6 +2338,28 @@ all-or-nothing:
   abundance is controlled as a confounder.
 - **Pseudobulk DE with patient as replicate, never per-cell DE tests** (stage 10) —
   per-cell tests inflate FDR by treating cells as independent replicates.
+- **Harmony with `patient_id` + `n_genes_ref` + `cohort` survived a real benchmark
+  (stage 05b, 2026-08-24) and is not re-opened.** Seven arms — unintegrated, Harmony /
+  scVI / Scanorama on `sample_name`, the incumbent, and Harmony / scVI on `cohort` —
+  scored with `scib-metrics` on the immune compartment against provisional CellTypist
+  labels. No arm qualified under the pre-declared rule.
+- **On this dataset a standard global scIB ranking selects the wrong method, and that
+  is now demonstrated rather than argued.** The arms scoring best on conventional scIB
+  are the ones that merge the censored plasma populations: `harmony_sample` (best batch
+  *and* bio scores) mixes plasma **13.5x** harder than the incumbent, `harmony_cohort`
+  **20.2x**, both while encoding more depth. Batch metrics cannot tell "correctly left
+  apart" from "failed to merge", so **the immune compartment is scored and the plasma
+  compartment is only diagnosed** — plasma mixing never contributes positively.
+- **`R²(depth ~ latent)` is the depth statistic, chosen for rotation-invariance.** It
+  depends only on the embedding's column span, so it compares across methods whose
+  latent axes are arbitrary; a per-dimension `max |Spearman|` would not.
+- **BBKNN is excluded from the benchmark, not overlooked.** It yields a corrected
+  neighbour graph and no embedding, so `Benchmarker` cannot score it on the same
+  footing; deriving an embedding from its graph would compare a different object. It is
+  installed in `mm-integration` so a graph-only side diagnostic stays possible.
+- **scANVI and scGen are deferred, not rejected.** Both need cell-type labels, which
+  come from stage 06 — which consumes the embedding under selection. They become a fair
+  secondary benchmark once stage 06's labels exist.
 - **Malignant subclustering is per-patient and un-integrated.** Harmony is for the
   immune compartment; the malignant clone is patient-private and must not be blended
   across patients. Per-cell antigen calls are raw counts and are unaffected by
