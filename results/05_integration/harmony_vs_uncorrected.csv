@@ -1,0 +1,3 @@
+,median cluster entropy by cohort,clusters below 0.5,n clusters
+uncorrected (X_pca),0.3405246985525714,34.0,54.0
+Harmony (X_pca_harmony),0.6205125924473065,13.0,30.0

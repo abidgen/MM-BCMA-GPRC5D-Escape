@@ -1,129 +1,233 @@
-"""
-io.py -> gene_space.py, on real count matrices.
+"""Stage 05 — gene-space harmonization, integration, clustering.
 
-This is the pairing neither module can verify alone: `gene_space` asserts that
-`var_names` are the deposited column position-for-position, and `io` is the only
-thing that produces them. Everything here needs the extracted deposit.
+Two tiers per `tests/conftest.py`. The gene-space contract and the batch-mixing
+arithmetic need no deposit; anything reading a checkpoint sits behind `requires_data`.
 """
 
 from __future__ import annotations
 
-import anndata
 import numpy as np
+import pandas as pd
 import pytest
+from anndata import AnnData
 
-from mm_escape import config, gene_space, io
+from mm_escape import config, integration
 
-from conftest import CANONICAL_SAMPLES, requires_data
-
-pytestmark = requires_data
-
-
-@pytest.fixture(scope="module")
-def harmonized(samples):
-    """The four canonical samples, merged the way stage 05 will merge all 62."""
-    objects = [gene_space.attach_ensembl_ids(samples[n].copy()) for n in CANONICAL_SAMPLES]
-    objects = gene_space.intersect_gene_space(objects, verbose=False)
-    merged = anndata.concat(objects, join="inner")
-    return gene_space.to_canonical_symbols(merged)
+from conftest import requires_data
 
 
-def test_attach_accepts_what_the_loader_produces(samples):
-    for name in CANONICAL_SAMPLES:
-        attached = gene_space.attach_ensembl_ids(samples[name].copy())
-        assert attached.var_names.str.match(r"^ENSG\d{11}$").all()
-        assert "deposited_symbol" in attached.var
+# ---------------------------------------------------------------------------
+# Configuration invariants — no data
+# ---------------------------------------------------------------------------
 
+def test_harmony_keys_carry_build_and_cohort_as_separate_axes():
+    """Neither substitutes for the other, and dropping either leaves batch behind.
 
-def test_attach_rejects_a_reordered_gene_axis(samples):
-    # The positional join is only safe because this is impossible to do by accident.
-    scrambled = samples["BM4"][:, ::-1].copy()
-    with pytest.raises(gene_space.GeneSpaceError, match="position-for-position"):
-        gene_space.attach_ensembl_ids(scrambled)
-
-
-def test_intersection_on_real_data_matches_the_committed_table(harmonized):
-    assert harmonized.n_vars == 32991
-
-
-def test_intersecting_on_symbols_is_refused(samples):
-    # Objects straight from the loader are symbol-keyed; intersecting them is the
-    # bug the whole gene_space module exists to prevent.
-    with pytest.raises(gene_space.GeneSpaceError, match="not keyed on Ensembl IDs"):
-        gene_space.intersect_gene_space(
-            [samples["MMRF_1695"].copy(), samples["BM4"].copy()], verbose=False
-        )
-
-
-def test_every_required_gene_survives_the_real_merge(harmonized):
-    gene_space.assert_required_genes(harmonized)
-
-
-def test_drifted_symbols_are_joined_not_dropped(harmonized):
-    # The 33538 and 33694 builds spell this gene differently; both rows are the same
-    # Ensembl entry and must end up as one column.
-    assert harmonized.var.loc["NSD2", "symbol_33538"] == "NSD2"
-    assert harmonized.var.loc["NSD2", "symbol_33694"] == "WHSC1"
-    assert int(harmonized.var["symbol_drift"].sum()) == 11140
-
-
-def test_cells_from_all_four_samples_survive_with_unique_names(harmonized, samples):
-    assert harmonized.obs["sample_name"].nunique() == 4
-    assert not harmonized.obs_names.duplicated().any()
-    assert harmonized.n_obs == sum(samples[n].n_obs for n in CANONICAL_SAMPLES)
-
-
-def test_metadata_survives_the_merge(harmonized):
-    for column in ("cohort", "chemistry", "patient_id", "sample_type", "n_genes_ref"):
-        assert column in harmonized.obs
-    # 56203_1 and 27522_1 are both WashU 1; MMRF_1695 is MMRF; BM4 is a donor.
-    assert set(harmonized.obs["cohort"].unique()) == {"WU1", "MMRF", "Donor"}
-
-
-def test_counts_are_preserved_through_the_merge(harmonized, samples):
-    # Subsetting to the intersection drops genes, so totals fall -- but no cell may
-    # gain counts, and the retained genes must carry exactly what they carried.
-    merged_total = float(harmonized.X.sum())
-    raw_total = sum(float(samples[n].X.sum()) for n in CANONICAL_SAMPLES)
-    assert 0 < merged_total <= raw_total
-    one = samples["MMRF_1695"]
-    row = one.obs_names[0]
-    assert float(harmonized[row, "TNFRSF17"].X.sum()) == float(
-        one[row, "TNFRSF17"].X.sum()
-    )
-
-
-@pytest.mark.slow
-def test_the_whole_cohort_loads(manifest):
-    """62 samples, every one of them, with the totals this deposit is known to have."""
-    n_cells = 0
-    per_cohort: dict[str, int] = {}
-    for adata in io.read_samples(manifest=manifest, verbose=False):
-        assert adata.n_vars in config.BUILDS
-        assert adata.n_obs > 0
-        n_cells += adata.n_obs
-        cohort = str(adata.obs["cohort"].iloc[0])
-        per_cohort[cohort] = per_cohort.get(cohort, 0) + adata.n_obs
-
-    assert n_cells == 204_040
-    assert sorted(per_cohort) == ["Donor", "MMRF", "WU1", "WU2"]
-    assert per_cohort["Donor"] == 48_150
-
-
-@pytest.mark.slow
-def test_sequencing_depth_tracks_cohort_not_chemistry_version(manifest):
-    """The confounder, asserted so a regression in the metadata join is visible.
-
-    MMRF cells carry ~1.9x the genes of WashU 1's. Note v2-vs-v3 alone is only 1.38x
-    with overlapping distributions -- the separation follows cohort, and CLAUDE.md
-    says not to quote a 2-3x chemistry effect.
+    The reference-build split cuts across cohorts (two WU1 samples on 33538, the
+    four ND_* donors on 33694) and the ~1.9x depth gap follows cohort rather than
+    build. See the constant's own note.
     """
-    medians: dict[str, list[float]] = {}
-    for adata in io.read_samples(manifest=manifest, verbose=False):
-        cohort = str(adata.obs["cohort"].iloc[0])
-        genes_per_cell = np.diff(adata.X.indptr)
-        medians.setdefault(cohort, []).append(float(np.median(genes_per_cell)))
+    assert integration.HARMONY_KEYS == ("patient_id", "n_genes_ref", "cohort")
 
-    by_cohort = {k: float(np.median(v)) for k, v in medians.items()}
-    assert by_cohort["MMRF"] > by_cohort["WU2"] > by_cohort["Donor"] > by_cohort["WU1"]
-    assert 1.7 < by_cohort["MMRF"] / by_cohort["WU1"] < 2.1
+
+def test_run_pca_harmony_rejects_a_missing_covariate():
+    adata = AnnData(
+        X=np.random.default_rng(0).normal(size=(20, 5)).astype(np.float32),
+        obs=pd.DataFrame({"patient_id": ["a"] * 20}, index=[f"c{i}" for i in range(20)]),
+    )
+    with pytest.raises(ValueError, match="n_genes_ref|cohort"):
+        integration.run_pca_harmony(adata)
+
+
+# ---------------------------------------------------------------------------
+# batch_mixing — synthetic, no data
+# ---------------------------------------------------------------------------
+
+def _clustered(assignments):
+    obs = pd.DataFrame(assignments, index=[f"c{i}" for i in range(len(assignments["leiden"]))])
+    return AnnData(X=np.zeros((len(obs), 0), dtype=np.float32), obs=obs)
+
+
+def test_batch_mixing_is_one_for_a_perfectly_mixed_cluster():
+    adata = _clustered({"leiden": ["0"] * 4, "cohort": ["A", "B", "C", "D"]})
+    row = integration.batch_mixing(adata).iloc[0]
+    assert row["entropy"] == pytest.approx(1.0)
+    assert row["n_cells"] == 4
+
+
+def test_batch_mixing_is_zero_for_a_single_batch_cluster():
+    adata = _clustered({
+        "leiden": ["0"] * 4 + ["1"] * 4,
+        "cohort": ["A"] * 4 + ["A", "B", "C", "D"],
+    })
+    report = integration.batch_mixing(adata).set_index("leiden")
+    assert report.loc["0", "entropy"] == pytest.approx(0.0)
+    assert report.loc["0", "dominant"] == "A"
+    assert report.loc["0", "dominant_pct"] == pytest.approx(100.0)
+    # Normalization is against the number of batches in the DATASET, not the
+    # cluster, so a mixed cluster still reads 1.0 alongside a pure one.
+    assert report.loc["1", "entropy"] == pytest.approx(1.0)
+
+
+def test_batch_mixing_requires_the_columns_it_names():
+    adata = _clustered({"leiden": ["0"], "cohort": ["A"]})
+    with pytest.raises(ValueError, match="patient_id"):
+        integration.batch_mixing(adata, batch_key="patient_id")
+
+
+def test_composition_table_returns_proportions_not_counts():
+    """Sample cell yields vary ~15x in this cohort; raw counts would read as biology."""
+    adata = _clustered({
+        "leiden": ["0", "1", "0", "0", "1", "1"],
+        "sample_name": ["A", "A", "A", "B", "B", "B"],
+        "cohort": ["X"] * 6,
+    })
+    table = integration.composition_table(adata)
+    assert np.allclose(table.sum(axis=1), 1.0)
+    assert table.loc["A", "0"] == pytest.approx(2 / 3)
+    assert table.loc["B", "0"] == pytest.approx(1 / 3)
+
+
+# ---------------------------------------------------------------------------
+# Against the stage-04 checkpoints
+# ---------------------------------------------------------------------------
+
+CHECKPOINTS = config.RESULTS_DIR / "04_qc" / "samples"
+
+requires_stage04 = pytest.mark.skipif(
+    not CHECKPOINTS.is_dir() or not any(CHECKPOINTS.glob("*.h5ad")),
+    reason="needs the stage-04 checkpoints (run notebooks/04_qc.ipynb)",
+)
+
+
+@requires_data
+@requires_stage04
+def test_checkpoints_still_satisfy_the_positional_gene_join():
+    """`attach_ensembl_ids` is positional; a reorder anywhere upstream breaks it.
+
+    Stage 04 writes new `var` columns, which is exactly the kind of change that
+    could reorder the axis without anyone noticing until a gene silently means a
+    different gene.
+    """
+    blocks = integration.load_qc_checkpoints(
+        samples=["MMRF_1695", "27522_1"], verbose=False
+    )
+    for block in blocks:
+        assert block.var_names.str.startswith("ENSG").all()
+        assert "deposited_symbol" in block.var
+
+
+@requires_data
+@requires_stage04
+def test_load_qc_checkpoints_filters_to_keep_by_default():
+    """Cells are filtered HERE, not at stage 04 — the checkpoints hold everything."""
+    filtered = integration.load_qc_checkpoints(samples=["BM4"], verbose=False)[0]
+    everything = integration.load_qc_checkpoints(
+        samples=["BM4"], keep_only=False, verbose=False
+    )[0]
+    assert filtered.n_obs < everything.n_obs
+    assert filtered.n_obs == int(everything.obs["keep"].sum())
+    assert filtered.obs["keep"].all()
+
+
+@requires_data
+@requires_stage04
+def test_gene_space_recovers_the_documented_numbers():
+    """32,991 genes, +10,827 over a symbol join, 11,140 drifted symbols.
+
+    The four canonical samples span both reference builds, which is what makes this
+    the same intersection the full cohort produces — the gene space is determined by
+    which builds are present, not by how many samples.
+    """
+    blocks = integration.load_qc_checkpoints(
+        samples=["MMRF_1695", "27522_1", "BM4", "56203_1"], verbose=False
+    )
+    symbol_join = set.intersection(*(set(b.var["deposited_symbol"]) for b in blocks))
+    adata = integration.build_gene_space(blocks, verbose=False)
+
+    assert adata.n_vars == 32_991
+    assert len(symbol_join) == 22_164
+    assert int(adata.var["symbol_drift"].sum()) == 11_140
+
+    # The genes the whole project depends on, including the one symbol drift would
+    # have silently dropped.
+    for gene in ("TNFRSF17", "GPRC5D", "SLAMF7", "FCRL5", "SDC1", "CD38",
+                 "IGKC", "NSD2"):
+        assert gene in adata.var_names, gene
+    # NSD2 is WHSC1 in the older build; that it resolved is the regression guard.
+    nsd2 = adata.var.loc["NSD2"]
+    assert nsd2["symbol_33694"] == "WHSC1"
+    assert nsd2["symbol_33538"] == "NSD2"
+
+
+@requires_data
+@requires_stage04
+def test_normalize_keeps_raw_counts_and_sets_no_redundant_raw():
+    """Stage 08 reads `layers['counts']`; antigen calls must not depend on stage 05."""
+    # Both builds, deliberately: intersecting a single build against itself yields
+    # 33,538 genes, which is not the cohort gene space and which
+    # `to_canonical_symbols` correctly refuses — see the test below.
+    blocks = integration.load_qc_checkpoints(
+        samples=["BM4", "27522_1"], verbose=False
+    )
+    adata = integration.build_gene_space(blocks, verbose=False)
+    before = adata.X.sum()
+
+    integration.normalize_and_hvg(adata, n_top_genes=500)
+    assert "counts" in adata.layers
+    assert adata.layers["counts"].sum() == before
+    # X is log-normalized in place and holds every gene, so `.raw` would duplicate
+    # a multi-GB matrix for nothing.
+    assert adata.raw is None
+    assert adata.n_vars == 32_991
+    assert adata.var["highly_variable"].sum() == 500
+
+
+@requires_data
+@requires_stage04
+def test_a_single_build_subset_is_refused_rather_than_silently_wrong():
+    """Guard against the easy notebook mistake of exploring on one sample.
+
+    Intersecting one 33538-build sample against itself gives 33,538 genes — 547 of
+    which exist in that build only and have no place in the cohort's harmonized
+    space. Producing them would be a quietly different gene set from every other
+    stage's; `to_canonical_symbols` raises instead.
+    """
+    from mm_escape import gene_space
+
+    blocks = integration.load_qc_checkpoints(samples=["BM4"], verbose=False)
+    with pytest.raises(gene_space.GeneSpaceError, match="intersection table"):
+        integration.build_gene_space(blocks, verbose=False)
+
+
+@requires_data
+@requires_stage04
+def test_the_harmonized_object_survives_a_round_trip_through_h5ad(tmp_path):
+    """Regression: the var index name must not collide with a var column.
+
+    `to_canonical_symbols` names the index `symbol` and keeps `canonical_symbol` as
+    a column, and for the 9 collision-suffixed genes the two differ. Naming both the
+    same made `write_h5ad` raise — an error that appeared only on write, after the
+    object had looked correct in memory through every in-memory test. Anything that
+    only fails on serialization needs a test that serializes.
+    """
+    blocks = integration.load_qc_checkpoints(
+        samples=["MMRF_1695", "27522_1"], verbose=False
+    )
+    adata = integration.build_gene_space(blocks, verbose=False)
+    assert adata.var.index.name == "symbol"
+    assert "canonical_symbol" in adata.var
+    # The 9 collided symbols are exactly where index and column disagree.
+    disagree = adata.var.index.to_numpy() != adata.var["canonical_symbol"].to_numpy()
+    assert disagree.sum() == 18, "9 colliding symbols, 2 Ensembl entries each"
+    assert all("__ENSG" in name for name in adata.var.index[disagree])
+
+    path = tmp_path / "roundtrip.h5ad"
+    adata.write_h5ad(path)
+
+    import anndata as ad
+    back = ad.read_h5ad(path)
+    assert back.shape == adata.shape
+    assert list(back.var_names) == list(adata.var_names)
+    for gene in ("TNFRSF17", "GPRC5D", "NSD2"):
+        assert gene in back.var_names

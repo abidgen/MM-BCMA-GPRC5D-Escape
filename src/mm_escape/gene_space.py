@@ -348,7 +348,13 @@ def to_canonical_symbols(
     adata.var["symbol_33538"] = sub["symbol_33538"].to_numpy()
     adata.var["symbol_33694"] = sub["symbol_33694"].to_numpy()
     adata.var["symbol_drift"] = sub["symbol_drift"].astype(bool).to_numpy()
-    adata.var_names = pd.Index(resolved.to_numpy(), name="canonical_symbol")
+    # Index name is `symbol`, NOT `canonical_symbol`, and the difference is
+    # load-bearing: `var["canonical_symbol"]` holds the BARE Ensembl-93 symbol while
+    # the index holds the collision-resolved one, so for the 9 duplicated symbols the
+    # two differ. AnnData refuses to write an index whose name matches a column with
+    # different values, which made this an error that only appeared at `write_h5ad`
+    # — long after the object looked correct in memory.
+    adata.var_names = pd.Index(resolved.to_numpy(), name="symbol")
 
     if adata.var_names.duplicated().any():
         dupes = adata.var_names[adata.var_names.duplicated()].tolist()[:5]

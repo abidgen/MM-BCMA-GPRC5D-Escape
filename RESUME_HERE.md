@@ -9,8 +9,9 @@
 cd /media/wrath/CART_mm_dual_antigen
 git status --short                   # expect no output (clean tree)
 git branch                          # expect only `main`
-conda run -n mm-core pytest -q       # expect 117 passed, 2 skipped, ~9 s
+conda run -n mm-core pytest -q       # expect 129 passed, 2 skipped, ~14 s
 ls results/04_qc/samples | wc -l     # expect 62 (stage 04 checkpoints)
+ls -la results/05_integration/integrated.h5ad   # expect ~1.3 GB
 ```
 
 If those are green the environment and data are intact and nothing needs rebuilding.
@@ -46,8 +47,12 @@ cells -> **172,940 kept (84.8%)**, per-cohort MAD thresholds derived and documen
 the patient mapping: **41 patients over 53 in-cohort samples**, exactly the paper's
 numbers, and confirmed the `_N` suffixes are serial disease-course timepoints.
 
-**>> The next artifact is `src/mm_escape/integration.py` + `notebooks/05_integration_clustering.ipynb`. <<**
-Nothing from stage 05 onward exists.
+**Stage 05 is done too.** 172,940 cells x **32,991 genes**, 30 Leiden clusters,
+`results/05_integration/integrated.h5ad`. Harmony converged in 4 iterations. The gene
+space came out exactly as predicted: 22,164 on symbols -> 32,991 on Ensembl IDs.
+
+**>> The next artifact is `src/mm_escape/annotation.py` + `notebooks/06_annotation.ipynb`, in `mm-annotation`. <<**
+Nothing from stage 06 onward exists.
 
 Stage 04 turned up two things that change stage 08 and are written up in `CLAUDE.md`:
 `pct_counts_in_top_20_genes` cannot be used as a filter here (it deletes
@@ -291,30 +296,35 @@ directory were removed. Everything is recoverable from the **`r-build-snapshot`*
    most of them data-free. See "2026-08-24 — S1 lands, stage 04 runs" below for the
    two findings that came out of it.
 
-6. **>> START HERE << Write `src/mm_escape/integration.py`** and
-   `notebooks/05_integration_clustering.ipynb` -> `results/05_integration/`, in
-   `mm-core`. It reads the stage-04 checkpoints.
+6. ~~**Write `src/mm_escape/integration.py`** and
+   `notebooks/05_integration_clustering.ipynb`~~ — **DONE 2026-08-24.** 172,940 x
+   32,991, 30 clusters, ~190 s, **peak ~20 GB RAM** (the one stage that concatenates
+   the matrices — it is the project's machine-size constraint). Donors and `25183`
+   are kept in the embedding and excluded at the patient-level aggregation instead.
+   See "2026-08-24 — stage 05" below for the compartment-specific integration result.
 
-   Five things to get right, all settled:
-   - **Filter to `obs["keep"]` HERE, not in stage 04.** The checkpoints hold every
-     barcode on purpose, so a later stage can ask what QC cost.
-   - **Gene-space work is already written and tested** — `gene_space.attach_ensembl_ids`
-     per sample (pre-concat, positional), then `intersect_gene_space` (IDs only),
-     then `to_canonical_symbols` once post-merge, then `assert_required_genes`.
-     Expect **32,991 genes**. `anndata.concat(join="inner")`, never outer.
-   - **Harmony keyed on `patient_id` with `n_genes_ref` AND `cohort` as covariates.**
-     Different axes; neither substitutes for the other.
-   - **`patient_id` is now the S1 mapping**, so the 8 donors and `25183` need a
-     deliberate decision (include in the embedding? exclude from patient-level
-     aggregates?) rather than falling out of a default.
-   - **The malignant compartment must not use the Harmony embedding.** Stage 10
-     depends on per-patient un-integrated subclustering. Say so in the notebook, and
-     say that per-cell antigen calls are raw counts and are integration-independent.
+7. **>> START HERE << Write `src/mm_escape/annotation.py`** and
+   `notebooks/06_annotation.ipynb` -> `results/06_annotation/`, in **`mm-annotation`**.
 
-6. Continue through stages 05-12 per `CLAUDE.md`'s pipeline section — notebook
+   - **First: `pip install -e . --no-deps` in `mm-annotation`.** It has only been done
+     for `mm-qc` and `mm-core`, so `import mm_escape` will fail there.
+   - **Three methods, compared, with the F1 thresholds declared before looking** —
+     PlasmaCell 0.95, T/NK/myeloid 0.90, rest 0.85. Write
+     `results/06_annotation/annotation_decision.md` with the per-class table.
+   - **The marker-coverage test is the load-bearing evidence, not concordance.** A
+     failed marker test vetoes a class regardless of how well the methods agree.
+   - **Interface contract**: `cell_type` (the only load-bearing output),
+     `cell_type_fine`, `annotation_source`, `annotation_conf`, and
+     `config.ANNOTATION_DECISION`.
+   - **State programs are continuous scores**, never `cell_type` labels.
+   - Stage 05 split plasma cells into three cohort-specific clusters (see below).
+     Harmless for annotation, but run the plasma-cell marker-coverage check **on
+     myeloma marrows specifically**, not only the donors.
+
+8. Continue through stages 06-12 per `CLAUDE.md`'s pipeline section — notebook
    number N always writes to `results/N_*/`, nothing else. Run them in numeric
    order; number order is execution order.
-7. **Apply the review corrections** as each stage is written — they are documented in
+9. **Apply the review corrections** as each stage is written — they are documented in
    place in `CLAUDE.md`, not collected in one section. Summaries in "Second design
    review" and "Third design review" below. Stage 08 carries the most of them; read
    both summaries before writing it.
@@ -828,16 +838,77 @@ anyway.
 
 ---
 
+## 2026-08-24 — stage 05: integration, and the censoring shows up again
+
+**172,940 cells x 32,991 genes, 30 Leiden clusters, ~190 s, peak ~20 GB RAM.** That
+peak is the project's machine-size constraint — stage 05 is the only stage that
+concatenates the count matrices (stage 04 deliberately worked off `obs` alone).
+
+The gene space came out exactly as `gene_space.py` predicted on four samples:
+**22,164 genes on raw symbols -> 32,991 on Ensembl IDs (+10,827)**, 11,140 drifted
+symbols joined correctly, `NSD2` resolving against `WHSC1`. Harmony converged in 4
+iterations.
+
+### Harmony fixed the immune compartment and did not fix the plasma cells
+
+| | clusters | cells | median cohort-mixing entropy |
+|---|---|---|---|
+| plasma-cell-like (`MZB1` > 40%) | 11 | 39,893 | **0.105** |
+| everything else | 19 | 133,047 | **0.751** |
+
+Uncorrected PCA for reference: 0.341 over 54 clusters. Harmony overall: 0.621 over 30.
+So the correction does real work — unevenly.
+
+The three largest plasma-cell clusters are **one per cohort**, each spanning ~30
+patients. That kills the benign reading: a patient-private clone would fragment into
+~41 clusters, not three cohort-shaped ones. The likely cause is stage 04's finding —
+WashU was cut at 10,000 UMIs and MMRF was not, and plasma cells are the
+highest-RNA-content cells in marrow, so **WashU's plasma cells are a truncated subset
+of the plasma-cell distribution**. No correction method restores cells that were never
+deposited. It is compartment-specific for the same reason: T/NK/myeloid/B cells sit
+well below 10,000 UMIs in every cohort, so the ceiling never touched them.
+
+**Contained, not fatal**, and contained by decisions made before it was observed:
+antigen calls are raw counts and never touch the embedding; stage 10 is per-patient
+and un-integrated; stage 06 annotates at cluster level, where three plasma-cell
+clusters all annotate as PlasmaCell. **What it forbids: reading any cross-cohort
+comparison of malignant-cell state off this embedding.** And the
+truncate-all-at-10,000 sensitivity analysis stage 08 owes is now owed twice — two
+independent signs of one problem.
+
+### One defect found and fixed
+
+`gene_space.to_canonical_symbols` named the `var` index `canonical_symbol` while also
+keeping a `canonical_symbol` **column** holding the unsuffixed symbol — which differs
+for the 9 collision-resolved genes. AnnData refuses to write such an index, so this
+failed only at `write_h5ad`, after every in-memory test had passed. The index is now
+named `symbol`, and `tests/test_integration.py` round-trips through `.h5ad` so a
+serialization-only bug cannot hide again. **Lesson for later stages: anything that
+only fails on write needs a test that writes.**
+
+Test suite: **129 passed, 2 skipped** in `mm-core` (131 collected); **76 passed, 55
+skipped** on a fresh clone with no `raw/` and no `results/`.
+
+Note `tests/test_integration.py` already existed — it held 11 io->gene_space
+end-to-end tests — and writing the stage-05 tests over it destroyed them. Recovered
+from `db026e8` as **`tests/test_io_gene_space_e2e.py`**, which is the better name
+anyway: "integration" there means the *software* sense, and in `test_integration.py`
+it now means the *biological* sense (Harmony). The collision is what caused the
+clobber. Every test file now maps 1:1 to a `src/mm_escape/` module, plus that one
+cross-module file.
+
+---
+
 ## Status
 
-Stages 01-04 complete and green. Envs built, kernels registered, gene space solved and
+Stages 01-05 complete and green. Envs built, kernels registered, gene space solved and
 committed, S1 parsed, QC run on the full cohort. Architecture stable.
 
-**Next artifact: `src/mm_escape/integration.py` + `notebooks/05_integration_clustering.ipynb`.**
-It reads the stage-04 checkpoints, filters to `obs["keep"]`, runs the (already written
-and tested) gene-space intersection to 32,991 genes, then Harmony on `patient_id` with
-`n_genes_ref` and `cohort` as covariates. First presentable state is still stages
-04-08: escape fractions with co-escape enrichment.
+**Next artifact: `src/mm_escape/annotation.py` + `notebooks/06_annotation.ipynb`,
+in `mm-annotation`** (which needs `pip install -e . --no-deps` first). Three methods
+compared per class against F1 thresholds declared in advance, with the marker-coverage
+test as the load-bearing evidence. First presentable state is still stages 04-08:
+escape fractions with co-escape enrichment.
 
 This file will keep growing the way the R build's did — exact numbers, bugs found and
 fixed, open decisions — as each stage actually runs.

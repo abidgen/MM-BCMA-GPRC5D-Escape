@@ -1113,6 +1113,54 @@ samples sit on the 33538 build, the four `ND_*` donors on 33694), Leiden cluster
 UMAP. Diagnostic UMAP colored by reference version (`n_genes_ref`) to confirm the
 intersection actually neutralized processing batch.
 
+**RUN AND COMPLETE 2026-08-24.** 172,940 cells x **32,991 genes**, 30 Leiden
+clusters, `results/05_integration/integrated.h5ad` (1.3 GB gzipped). Whole pipeline
+~190 s, **peak ~20 GB RAM** — the one stage that actually concatenates the matrices,
+so it is the machine-size constraint for the project. Gene space came out exactly as
+`gene_space.py` predicted: 22,164 on raw symbols -> **32,991 on Ensembl IDs
+(+10,827)**, 11,140 drifted symbols joined correctly, all required genes present with
+`NSD2` resolving against `WHSC1` in the older build.
+
+**Harmony works on the immune compartment and does NOT work on the plasma-cell
+compartment — and that is the stage-04 censoring showing up a second time.** Median
+per-cluster cohort-mixing entropy:
+
+| | clusters | cells | median entropy by cohort |
+|---|---|---|---|
+| plasma-cell-like (`MZB1` > 40%) | 11 | 39,893 | **0.105** |
+| everything else | 19 | 133,047 | **0.751** |
+
+(Uncorrected PCA for reference: 0.341 median over 54 clusters, 34 of them below 0.5.
+Harmony: 0.621 over 30, 13 below 0.5. The correction is doing real work — it is just
+doing it unevenly across compartments.)
+
+The three largest plasma-cell clusters are **one per cohort**, each spanning ~30
+patients. That rules out the benign explanation: a patient-private clone would
+fragment into ~41 clusters, not three cohort-shaped ones. The likely cause is the
+stage-04 finding — WashU was cut at 10,000 UMIs and MMRF was not, plasma cells are
+the highest-RNA-content cells in marrow, so **WashU's plasma cells are a truncated
+subset of the plasma-cell distribution** and no batch-correction method can restore
+cells that were never deposited. It is compartment-specific for the same reason:
+T/NK/myeloid/B cells sit well below 10,000 UMIs everywhere, so the ceiling never
+touched them.
+
+**Contained, not fatal** — and contained by decisions made before it was observed:
+per-cell antigen calls are raw counts and never touch this embedding; stage 10's
+malignant subclustering is per-patient and un-integrated; stage 06 annotates at
+cluster level, where three cohort-specific plasma-cell clusters all annotate as
+PlasmaCell at no cost. **What it does forbid: reading any cross-cohort comparison of
+malignant-cell state off this embedding.** And it makes stage 08's cohort covariate
+and the truncate-all-at-10k sensitivity analysis mandatory rather than advisable —
+this is the second independent sign of the same problem.
+
+One defect found and fixed: `gene_space.to_canonical_symbols` named the `var` index
+`canonical_symbol` while also keeping a `canonical_symbol` column holding the
+*unsuffixed* symbol, which differs for the 9 collision-resolved genes. AnnData
+refuses to write such an index, so this failed only at `write_h5ad` — after every
+in-memory test had passed. The index is now named `symbol`, and
+`tests/test_integration.py` round-trips through `.h5ad` so a serialization-only bug
+cannot hide again.
+
 **Constrain integration's blast radius (new).** Harmony keyed on `patient_id` is
 correct for the immune compartment but carries a real risk for the tumor: the
 malignant clone is *patient-private by definition*, so forcing patients together
@@ -1759,7 +1807,7 @@ The final stage; consumes the output of everything upstream. Assembles:
 
 ## Status / immediate next step
 
-**Stages 01-04 are run and verified. Stage 05 is the next artifact.**
+**Stages 01-05 are run and verified. Stage 06 (annotation) is the next artifact.**
 The working tree is clean (R build removed, preserved under `r-build-snapshot`), `raw/`
 is intact at 62 samples, `scripts/01-03` are confirmed (62/62 `triplet-ok`), notebooks
 01-03 are written and executed, the four `envs/*.yml` are built with kernels
@@ -1792,19 +1840,30 @@ resolved (41 patients / 53 in-cohort samples), the `_N` suffixes are confirmed a
 serial timepoints, and clinical covariates reach every cell. The S1 policy below is
 therefore mostly discharged — see it for what remains.
 
+**`integration.py` and `notebooks/05_integration_clustering.ipynb` are written and
+run (2026-08-24).** 172,940 x 32,991, 30 clusters, embedding in
+`results/05_integration/integrated.h5ad`. Read the stage-05 entry above for the
+compartment-specific integration result, which is load-bearing for stage 08.
+
 First actions, in order:
-1. Write `src/mm_escape/integration.py` and `notebooks/05_integration_clustering.ipynb`
-   in `mm-core`, reading the stage-04 checkpoints (`qc.load_checkpoints`, or
-   per-sample). Filter to `obs["keep"]` there, not in stage 04 — the checkpoints hold
-   every barcode on purpose.
-2. Gene-space intersection via `gene_space.py` (already written and tested):
-   `attach_ensembl_ids` per sample, `intersect_gene_space`, `to_canonical_symbols`,
-   `assert_required_genes`. Expect 32,991 genes. Report what harmonization recovers.
-3. Harmony keyed on `patient_id` with `n_genes_ref` AND `cohort` as covariates. Note
-   `patient_id` is now the S1 mapping, so the 8 donors and `25183` need a deliberate
-   decision rather than a default.
-4. The malignant compartment must NOT use the Harmony embedding (stage 10 depends on
-   per-patient un-integrated subclustering); state that in the notebook.
+1. Write `src/mm_escape/annotation.py` and `notebooks/06_annotation.ipynb` in
+   **`mm-annotation`** (needs `pip install -e . --no-deps` in that env first — it was
+   only done for `mm-qc` and `mm-core`).
+2. Run all three methods and compare per class against the F1 thresholds **declared
+   in advance** (PlasmaCell 0.95 / T-NK-myeloid 0.90 / rest 0.85). Do not settle this
+   implicitly by whichever runs first. Write
+   `results/06_annotation/annotation_decision.md`.
+3. The marker-coverage test is the load-bearing evidence, not the concordance
+   numbers — a label set can be perfectly self-consistent and biologically wrong.
+4. Emit the interface contract exactly: `cell_type`, `cell_type_fine`,
+   `annotation_source`, `annotation_conf`, plus `config.ANNOTATION_DECISION`. Stages
+   07-12 read `cell_type` and nothing else.
+5. Score the orthogonal state programs as **continuous** `obs` floats — never let
+   them leak into `cell_type`.
+6. Note stage 05 split plasma cells into three cohort-specific clusters. That is
+   expected and costs annotation nothing (all three annotate as PlasmaCell), but the
+   plasma-cell marker-coverage check must be run **on myeloma marrows specifically**,
+   not only the donors.
 
 ### Supplementary Table S1 policy (decided 2026-08-20)
 
