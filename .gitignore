@@ -1,4 +1,4 @@
-# =============================================================================
+=============================================================================
 # MM Dual-Antigen (BCMA/GPRC5D) escape analysis — Python rebuild
 #
 # Rule of thumb: commit source and small presentable outputs (tables, figures);
@@ -11,11 +11,16 @@
 # writes into `results/NN_*/` subdirectories, so match by extension at any depth.
 # =============================================================================
 
+
+
+
 # --- Raw data (large, regenerable via scripts/01_download_data.sh) ------------
 raw/*.tar
 raw/unpacked/
 raw/unpacked_bulk/
 raw/samples/
+raw/gtf/
+
 # Keep the small manifest — it documents what was actually downloaded/found
 !raw/sample_manifest.csv
 
@@ -26,6 +31,10 @@ raw/samples/
 !raw/*_family.soft.gz
 raw/*_family.xml.tgz
 raw/*_series_matrix.txt.gz
+
+# --- Generated analysis outputs ----------------------------------------------
+results/
+
 
 # The paper's supplementary tables (Cancer Research CAN-22-1769), ~500 KB in total
 # and committed for the same reason as the SOFT files: S1 is the input to
