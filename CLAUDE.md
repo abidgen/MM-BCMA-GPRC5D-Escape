@@ -349,6 +349,9 @@ src/mm_escape/
 |                                # threshold, escape-fraction computation,
 |                                # threshold sensitivity band, coverage matrix,
 |                                # co-negativity enrichment (2x2 + depth-cond. null)
+|-- coverage.py                  # multi-antigen uncovered fraction, incremental gain,
+|                                # per-target QC eligibility (stage 08c); delegates all
+|                                # depth binning to antigen.py — never its own
 |-- robustness.py                 # bootstrap CIs (flat + hierarchical),
 |                                  # depth/downsampling checks, expression-matched
 |                                  # false-negative floor + detection curve,
@@ -384,14 +387,17 @@ no stage you cannot open and step through:
 | 05 | `notebooks/05_integration_clustering.ipynb` | `mm-core` | `results/05_integration/` |
 | 05b | `notebooks/05b_integration_benchmark.ipynb` | `mm-integration` | `results/05b_benchmark/` |
 | 06 | `notebooks/06_annotation.ipynb` | `mm-annotation` | `results/06_annotation/` |
-| 07 | `notebooks/07_malignant_calling.ipynb` | `mm-core` | `results/07_malignant/` |
-| 08 | `notebooks/08_antigen_escape_fraction.ipynb` | `mm-core` | `results/08_escape_fraction/` |
-| 09 | `notebooks/09_escape_robustness.ipynb` | `mm-core` | `results/09_robustness/` |
-| 10 | `notebooks/10_escape_subclone_phenotype.ipynb` | `mm-core` | `results/10_subclone/` |
-| 11 | `notebooks/11_cellchat_liana.ipynb` | `mm-communication` | `results/11_communication/` |
+| 07 | `notebooks/07_malignant_plasma.ipynb` | `mm-core` | `results/07_malignant_plasma/` |
+| 08 | `notebooks/08_dual_antigen_escape.ipynb` | `mm-core` | `results/08_dual_antigen_escape/` |
+| 08c | `notebooks/08c_multi_antigen_coverage.ipynb` | `mm-core` | `results/08_dual_antigen_escape/multi_antigen_coverage/` |
+| 09 | `notebooks/09_bulk_validation.ipynb` | `mm-core` | `results/09_bulk_validation/` |
+| 09b | `notebooks/09b_risk_tiers.ipynb` | `mm-core` | `results/08_dual_antigen_escape/risk_tier_provisional/` |
+| 10 | `notebooks/10_dn_coherence.ipynb` | `mm-core` | `results/10_dn_coherence/` |
+| 11 | `notebooks/11_immune_context.ipynb` | `mm-communication` | `results/11_immune_context/` |
+| 11b | `notebooks/11b_liana_verification.ipynb` | `mm-communication` | `results/11_immune_context/liana_verification/` |
 | 12 | `notebooks/12_decision_packet.ipynb` | `mm-core` | `results/12_decision_packet/` |
 
-**Number order IS execution order** — 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11 → 12, with
+**Number order IS execution order** — 04 → 05 → 06 → 07 → 08 → 08c → 09 → 09b → 10 → 11 → 12, with
 no exceptions. The scope expansion renumbered the sequence rather than appending to it,
 precisely so this holds. **Never add a stage whose number and run position disagree.**
 
@@ -401,6 +407,13 @@ Each `results/NN_*/` holds everything that stage produces (figures, CSVs, checkp
 
 Notebooks are **paired with `jupytext`** (percent format); the `.ipynb` is gitignored
 and generated from the committed `.py` (see `.gitignore` for how to flip that).
+**Do NOT use `jupytext --sync` in this repo.** It has repeatedly treated the `.ipynb` as
+the authoritative representation and silently dropped cells appended to the `.py` — it did
+so three times in one session (notebooks 08, 09b, 10), each time leaving a `.py` that
+compiled and a `.ipynb` missing the new work. **The `.py` is authoritative; always convert
+explicitly in that direction:** `jupytext --to notebook notebooks/NN_x.py -o notebooks/NN_x.ipynb`,
+then execute and verify the expected counts appear in the output. Never adjust scientific
+output to make a notebook reproduce.
 
 **Division of labour.** Notebooks are the analysis — narrative, plots, intermediate
 inspection, the reasoning a reader steps through. `src/mm_escape/` holds what earns
@@ -539,102 +552,24 @@ survived; nothing about stage 05's output changed.** Seven arms (unintegrated; H
   "handled".
 
 ---
-
 **06 — Annotation** (`notebooks/06_annotation.ipynb`, `src/mm_escape/annotation.py`;
-env: **`mm-annotation`**). Follows `sc-best-practices.org`'s annotation chapter.
-**Three methods are run and compared, and the choice is made per class against
-thresholds declared in advance** — not "`celltypist` and/or marker scoring", which
-would leave a load-bearing decision to be settled implicitly by whatever ran first.
-
-**What is load-bearing.** This stage feeds three things and only three:
-
-| Downstream need | Labels that matter | Cost of getting it wrong |
-|---|---|---|
-| Stage 07 malignant calling | PlasmaCell vs. everything else | wrong plasma-cell set → wrong denominator for `frac_double_negative` |
-| Stage 08 ambient noise floor | T / NK / myeloid purity | a plasma cell leaking into the "confidently antigen-negative" population inflates the floor and biases every antigen call |
-| Stage 11 confounder control | T/NK abundance, ideally with subsets | composition artifact misread as immune evasion |
-
-Fine-grained subtypes (CD4 Tcm vs. Tem) benefit stage 11 only and **must never be the
-reason a method is chosen**.
-
-**Method A — manual, marker-based**, at cluster level (not per cell; clustering absorbs
-dropout, which matters at 1,162 median genes/cell). `scanpy.tl.score_genes` over the
-project panel: PlasmaCell (SDC1/CD38/MZB1/XBP1/IRF4), Bcell (MS4A1/CD79A/CD19), Tcell
-(CD3D/CD3E/CD8A/CD4), NK (NCAM1/NKG7/GNLY), Myeloid (CD14/LYZ/ITGAM), Erythroid
-(HBB/GYPA), HSPC (CD34/KIT). Then `dotplot(..., standard_scale="var")` as saved
-assignment evidence, and `rank_genes_groups(method="wilcoxon")` +
-`filter_rank_genes_groups`. **The DE step is not optional** — it is the only thing that
-can surface a population the seven-class panel does not cover (pDC, erythroid
-progenitors, a doublet-driven cluster). Record ambiguous clusters as ambiguous.
-
-**Method B — `celltypist`.** Normalize to 10,000 counts/cell then `log1p` (its stated
-requirement); run on **expression, never the Harmony embedding**. Enumerate models with
-`models_description()` rather than assuming names; default `Immune_All_Low.pkl` +
-`Immune_All_High.pkl`, plus a healthy-BM model if one ships.
-`annotate(..., majority_voting=True, over_clustering=<stage-05 leiden key>)` — passing
-the existing Leiden key is what makes the methods comparable (same partition, different
-labelings). Retain `conf_score`.
-
-**Method C — `SingleR`**, chosen to cover CellTypist's blind spot rather than duplicate
-its strengths: `Immune_All_*` is immune-only, so its predictable failure is erythroid and
-HSPC, which `celldex`'s `NovershternHematopoieticData` covers
-(`HumanPrimaryCellAtlasData` as fallback; verify both exist in the installed `celldex`).
-Run with `clusters=<leiden key>`; retain `pruned.labels` and the delta/score matrix as
-SingleR's own low-confidence signal.
-
-**Two caveats about plasma cells, pointing opposite ways.** The references contain
-*normal* plasma cells, so malignant PCs will be labelled "Plasma cells" — correct and
-sufficient, since malignant-vs-normal is stage 07's job; do not count a method down for
-failing to find the tumor. But conversely, because no malignant class exists in the
-reference, a heavily aneuploid clone may be labelled something else or split across
-labels. **Run the plasma-cell marker-coverage test on myeloma marrows specifically, not
-only the donors** — otherwise a systematic failure on exactly the cells this project
-measures passes unnoticed. Stage 05's three cohort-specific plasma clusters cost
-annotation nothing (all three annotate as PlasmaCell) but make this check more important.
-
-**The comparison** (artifacts to `results/06_annotation/`):
-1. Confusion matrices — manual × CellTypist, manual × SingleR, **CellTypist × SingleR** —
-   at cluster and cell level, plus ARI and per-class F1/Jaccard. ARI alone is
-   insufficient: a method can score well overall while failing on plasma cells, the one
-   class that must not be wrong. The two automated methods agreeing with *each other* is
-   the strongest evidence available, being trained on different references.
-2. **The marker-coverage test — the decisive one.** Dotplot the *manual* panel grouped by
-   each *automated* method's labels. If CellTypist's T cells are CD3D/CD3E-high, its
-   plasma cells MZB1/SDC1-high, and so on, the automated labels already encode what the
-   manual panel encodes.
-3. Confidence/coverage: `conf_score` per cluster, SingleR pruned-`NA` rate and deltas,
-   the fraction of cells unassigned or labelled outside the panel.
-
-**These are concordance scores, not validation accuracy.** The manual annotation is a
-third opinion from the same expression matrix, not ground truth — "F1 against manual"
-measures *agreement*, and the two automated methods agreeing is agreement between
-references that share marker-biology priors and may share their blind spots. Label it
-all **concordance**. The load-bearing evidence of *biological* validity is the
-marker-coverage test: a label set can be perfectly self-consistent and biologically
-wrong. Headline figure, in this order — **label concordance → marker-expression validity
-→ uncertainty/unassigned** — concordance first because it is the weakest of the three.
-
-**The decision rule — per class, declared before looking**, so "choose the best" cannot
-become post-hoc rationalization. A class goes to an automated method when its
-marker-coverage test passes, its own confidence signal is not flagging the cluster, and
-concordance with manual clears a pre-set F1 bar:
-- **PlasmaCell: F1 ≥ 0.95** — strictest, because it sets the metric's denominator.
-- **T / NK / Myeloid: F1 ≥ 0.90** — these define stage 08's noise floor.
-- **Bcell / Erythroid / HSPC: F1 ≥ 0.85** — nothing downstream is load-bearing on these.
-
-Where both qualify, take the higher concordance and record that both passed. Where
-neither does, the class falls back to the manual cluster label. **A failed
-marker-coverage test vetoes a class regardless of concordance** — high agreement on a
-biologically unsupported label is agreement on an error. Expected but **not** assumed:
-immune classes and plasma cells from CellTypist, erythroid/HSPC from SingleR or manual.
-**The numbers decide.** Outcome to `results/06_annotation/annotation_decision.md`.
+env: **`mm-annotation`**) — **RUN, ACCEPTED (C2d) and FROZEN.** Three methods (manual
+marker adjudication, `celltypist`, `SingleR`) compared per class against F1 bars, a
+marker-coverage veto and a lineage-contradiction veto, **all declared before any result
+was computed and identical across all three revisions**. Final counts over 172,940 cells:
+Tcell 60,896 · PlasmaCell 35,474 · Myeloid 33,817 · Erythroid 16,224 · Bcell 12,226 ·
+Ambiguous 11,424 (= Leiden 23) · HSPC 2,879. The plasma boundary — the only one stages 07
+and 08 depend on — agrees with the source paper's own annotation on 32,307 of 32,337 cells.
+**Full methodology, the three revisions, the cluster-23 work and the paper benchmark:
+`docs/stage-results.md`.** Constants live in `config.py` (`CONCORDANCE_THRESHOLDS`
+0.95 PlasmaCell / 0.90 T-NK-Myeloid / 0.85 rest, `MARKER_COVERAGE_MIN` 0.30,
+`CONTRADICTION_MIN_GENES` 2, `CONTRADICTION_MAX_RATE` 0.25, `MANUAL_*`).
 
 **Interface contract — downstream stages read `cell_type` and nothing else:**
 - `obs["cell_type"]` — the canonical load-bearing coarse label, seven project classes.
 - `obs["cell_type_fine"]` — CellTypist fine label where available, else `NA`. Stage 11
   only; never load-bearing.
-- `obs["annotation_source"]` — per cell: `celltypist` | `singler` | `manual`. Without it
-  a mixed-provenance label column is untraceable.
+- `obs["annotation_source"]` — per cell: `celltypist` | `singler` | `manual` | `consensus`.
 - `obs["annotation_conf"]` — the winning method's confidence for that cell.
 - `config.ANNOTATION_DECISION` — the per-class method map, so no downstream module
   branches on annotation logic.
@@ -642,32 +577,59 @@ immune classes and plasma cells from CellTypist, erythroid/HSPC from SingleR or 
 This decoupling is deliberate: the comparison can be redone or reversed later without
 touching stages 07-12.
 
+**What stage 06 is load-bearing for, and only this:** stage 07's plasma-cell set (the
+metric's denominator), stage 08's T/NK/myeloid noise floor, and stage 11's T/NK abundance
+confounder. Fine-grained subtypes benefit stage 11 only and **must never be the reason a
+method is chosen**.
+
+**Standing principles this stage established, which bind future work:**
+- **Leiden clusters are evidence-aggregation units, not assumed ground-truth cell types.**
+  At 1,162 median genes/cell a per-cell marker call on a dropped-out gene is a *wrong*
+  call rather than a missing one, so evidence is pooled at cluster level to stabilise it.
+  A cluster whose evidence is genuinely mixed **stays `Ambiguous`**, and `Ambiguous` is
+  then a *signal* marking where local subclustering is warranted. **Never resolve a mixed
+  cluster by loosening a global rule** — resolve it locally or leave it unresolved.
+- **Concordance is not accuracy.** F1 against manual measures *agreement*; the
+  marker-coverage test is the biological evidence and can veto a class regardless of how
+  well the methods agree, because high agreement on an unsupported label is agreement on
+  an error.
+- **Contradiction is detected, never inferred from absence.** Dropout can only *hide*
+  evidence, so a detection-based rule under-calls contradictions and can never manufacture
+  one from a zero. The contradiction programs are deliberately **not** the identification
+  panels: a panel that identifies a class may carry an ambient-prone gene, but a program
+  that *accuses* a cell of another lineage may not — so globins are excluded from
+  `erythroid` and `LYZ` from `myeloid`.
+- **Isolated `TRBC1`/`TRBC2` expression is insufficient evidence of T-lineage
+  commitment** without coordinated `CD3`/`TRAC`. `config.T_IDENTITY_ANCHORS` vs
+  `config.T_CONTEXT` encode this. Candidate mechanisms (germline TRB transcription,
+  ambient, multiplets) are **hypotheses** — the diagnostic did not distinguish them, so
+  none may be stated as established.
+- **A gene cannot be a lineage-restricted anchor in one route and generic context in
+  another.** Enforced by cross-route audit across the three broad-Myeloid routes.
+- **Known limitation — the Myeloid contradiction programme is not route-symmetric.**
+  Identification has three routes (monocyte, cDC, pDC); the exclusion side is still the
+  single monocyte panel `CD14`/`FCN1`/`MNDA`/`ITGAM`, so a cDC or pDC population can
+  satisfy identification while raising almost no Myeloid contradiction. This
+  **under-calls contradictions, never invents them** — the safe direction. A route-aware
+  revision is proposed but deliberately deferred: one variable at a time.
+
 **Orthogonal cell-state programs — continuous, never categorical.** A cell has one
-`cell_type` but can carry several active programs at once. Score with
-`scanpy.tl.score_genes`, store as float `obs` columns, **never collapse into
-`cell_type`**:
-
-| Program | Why it matters here |
-|---|---|
-| Cell cycle (`MKI67`, `TOP2A`, `PCNA`) | a proliferative escape subclone is a different risk from a quiescent one — feeds stage 10 |
-| Interferon (`ISG15`, `IFI6`, `STAT1`, `MX1`) | immune-pressure marker; feeds stage 11 |
-| Antigen presentation (`B2M`, HLA I/II) | `B2M` loss is a documented myeloma immune-escape route. CAR-T is MHC-independent so it does not affect the escape metric, but it is a *competing* evasion mechanism and belongs in the stage 11/12 interpretation |
-| UPR (`XBP1`, `ATF4`, `HSPA5`, `DDIT3`) | plasma cells are professional secretors; UPR tone is core PC biology |
-| Hypoxia / stress | standard confounder — cheap to score, expensive to discover late |
-
-A cycling plasma cell is `cell_type == "PlasmaCell"` **plus** a high cell-cycle score,
-not a "Cycling" identity. If any method emits a proliferation label as an identity,
-remap it to PlasmaCell + score.
+`cell_type` but can carry several active programs at once (cell cycle, interferon,
+antigen presentation, UPR, hypoxia/stress). Score with `scanpy.tl.score_genes`, store as
+float `obs` columns, **never collapse into `cell_type`**. A cycling plasma cell is
+`cell_type == "PlasmaCell"` **plus** a high cell-cycle score, not a "Cycling" identity;
+if any method emits a proliferation label as an identity, remap it to PlasmaCell + score.
+`B2M`/HLA loss matters here as a *competing* evasion route — CAR-T is MHC-independent, so
+it does not affect the escape metric but belongs in the stage 11/12 interpretation.
 
 **Per-patient composition is a first-class output**, not a by-product: malignant-PC
-fraction of the marrow (tumor burden, context for stage 12) and T/NK/myeloid abundance
+fraction of the marrow (tumour burden, context for stage 12) and T/NK/myeloid abundance
 (stage 11's primary confounder). Any composition *comparison* between groups uses
-**`scCODA`**, not a raw proportion test — proportions are compositional (they sum to 1,
-so one type rising forces others down) and naive per-type tests are anticonservative.
-`scCODA` needs its own env.
+**`scCODA`**, not a raw proportion test — proportions are compositional, so naive
+per-type tests are anticonservative. `scCODA` needs its own env.
 
 **07 — Malignant plasma cell identification**
-(`notebooks/07_malignant_calling.ipynb`, `src/mm_escape/malignant.py`; env:
+(`notebooks/07_malignant_plasma.ipynb`, `src/mm_escape/malignant.py`; env:
 `mm-core`). Subset to plasma cell clusters. Kappa (`IGKC`) vs. lambda
 (`IGLC1-7`) restriction scoring per cell; per-patient dominant restriction class
 (>90% in an involved marrow) marks malignant cells. Prefer scVDJ-seq clonotype
@@ -710,8 +672,35 @@ artifact of the weaker malignant calls — which is a much stronger statement th
 agreement rate alone. Same distinction as stage 10's coherence hierarchy: `uncertain`
 is a *reported quantity*, never a silent drop, and `probable` from CNV being **not
 evaluable** is not the same as CNV being negative.
+**Stage 07 is FROZEN (accepted 2026-08-25). Do not modify it once antigen analysis
+begins.** What is preserved, and what each artifact may and may not be used to claim:
+- **`CNV = NOT_EVALUABLE` cohort-wide** — a frozen *negative-method* result. Healthy-donor
+  plasma cells failed the negative control (donor false-positive span 0.0%-50.6% at z>3,
+  `ND_090617` median z = +3.03, leave-one-out flat), so the method was rejected **before
+  any disease CNV was inspected**. An unreliable assay contributes no evidence; this is
+  not weak negative evidence, and Layer-B was deliberately not relaxed to compensate.
+- **The V-gene axis is a higher-specificity refinement of the immunoglobulin clonality
+  axis, NOT an orthogonal second malignancy axis.** J segments are uncapturable at 3'
+  (IGKJ 0.00%, IGHJ 0.04%), so there is no clonotype — only patient-specific V usage.
+- **`CLONE_SUPPORTED` (21,906 cells, 32 patients) is a high-specificity dominant-clone
+  core, not an exhaustive malignant-cell set.**
+- **`CLONE_COMPATIBLE_V_UNOBSERVED` (7,109 cells) holds clone-compatible cells whose
+  dominant V transcript was not observed, and is required for sensitivity analysis
+  because V detectability is strongly depth-dependent.** Supported-vs-unobserved median
+  UMI ratio is 1.79x pooled but **17.6x in MMRF** (1.85x WU1, 1.35x WU2), and 24/24
+  evaluable patients show the same direction. Antigen detection tracks it: GPRC5D 0.216
+  vs 0.083 pooled, **0.589 vs 0.151 in MMRF**. `83942`/`MMY83942` — one patient, one
+  clone, one dominant V — splits 0.746 vs 0.351 across two protocols, which is direct
+  evidence that V observability is technical rather than biological.
+- **Antigen-invariance is verified, not asserted.** Six perturbations of
+  `TNFRSF17`/`GPRC5D` (zero, 10,000, independent and joint) leave the patient table,
+  V evaluability, dominant-V calls and all 35,474 per-cell clone states bit-identical,
+  including a joint case shifting every library by ~20,000 UMI.
+- **Stage 08 must report the primary and sensitivity denominators separately and must
+  never select whichever denominator gives the cleaner biological result.**
+
 **08 — Antigen scoring + dual-antigen escape fraction**
-(`notebooks/08_antigen_escape_fraction.ipynb`, `src/mm_escape/antigen.py` +
+(`notebooks/08_dual_antigen_escape.ipynb`, `src/mm_escape/antigen.py` +
 `robustness.py`; env: `mm-core`). Per malignant cell: positivity for BCMA
 (`TNFRSF17`), GPRC5D, and backups (`SLAMF7`, `FCRL5`), using the ambient-noise-floor
 threshold (**not** a naive `>0` call). Classify into `dual_positive` / `BCMA_only` /
@@ -890,6 +879,147 @@ from neighbors, and the entire question is whether a transcript is genuinely abs
 Smoothing over the zeros erases the measurement. The detection curve models the
 uncertainty instead of filling it in.
 
+**Stage 08 is RUN, ACCEPTED and FROZEN (2026-08-25). Do not rerun it, and do not modify
+its null, depth strata, denominator definitions or sensitivity analyses unless a concrete
+reproducibility failure is found.** Its headline is a largely NEGATIVE result on co-escape
+enrichment, and it is reported as one.
+
+> **The Stage-08 scientific conclusion.** Observed double-negativity is common, but most
+> apparent BCMA/GPRC5D co-negativity enrichment collapses after conditioning on
+> cohort-specific sequencing depth. **Raw double-negative fraction must not be interpreted
+> as biological dual-antigen escape by itself.**
+
+On the record, and binding on stage 12:
+- median **unconditioned** enrichment **1.052**; median **depth-conditioned** enrichment
+  **1.009**;
+- **only 4 of 32 patients retain significant enrichment, all in MMRF**;
+- **significance is depth/power-dependent and must NOT become the sole criterion for risk
+  tiering** — the four significant patients sit in the deepest cohort;
+- **`GPRC5D` has a much larger technical-zero floor than `TNFRSF17`, especially in WashU**;
+- **dropout is bounded and characterised, not mathematically corrected** — the
+  technical-zero floor is a plausibility bound, and subtracting or dividing it to
+  manufacture a "corrected" antigen-negative fraction is forbidden;
+- **primary and sensitivity denominators remain separate** and are never collapsed;
+- **truncate-all-at-10k remains a required sensitivity**, not a discharged one-off;
+- **repeated-sample instability is evidence and must propagate into interpretation**, never
+  be pooled away. Parameters frozen in
+`results/08_dual_antigen_escape/stage08_predeclaration.md` before any DN fraction existed.
+32 patients, 21,906 primary cells; median `observed_double_negative_fraction` **0.335**
+(0.017-0.783) — a measurement, never an escape probability.
+- **Depth conditioning removes nearly all apparent co-negativity.** Unconditioned
+  enrichment median 1.052 (max **4.606**) collapses to **1.009** (max 1.750) under the
+  cohort-specific depth-stratified null. `MMRF_1505` 4.61 -> 1.42, `MMRF_1720` 2.81 ->
+  1.08, `MMRF_2038` 1.90 -> 1.03. **An unconditioned null would have reported strong
+  co-escape in eight patients from library size alone** — in the project's own hypothesised
+  direction. Only 4 of 32 keep significant enrichment, all MMRF, i.e. where the test has
+  power rather than necessarily where the biology is.
+- **The primary null is cohort-specific by decision (frozen 2026-08-25) because stage 07
+  showed missingness is cohort-dependent.** Global bins are a secondary diagnostic:
+  median |delta| 0.0011, max 0.220, and **one patient (`MMRF_1413`) crosses 1.0** between
+  schemes and is flagged rather than resolved.
+- **Cross-cohort DN comparison is FORBIDDEN.** GPRC5D detection spans 9.4x (MMRF 0.364 /
+  WU1 0.121 / WU2 0.039), tracks depth monotonically, and DN moves the opposite way.
+- **The technical-zero floor is the decisive limitation.** Expression-matched control genes
+  in non-plasma cells: a gene at `GPRC5D`'s abundance reads zero **77-79%** of the time in
+  the shallowest strata and 37% in the deepest WashU stratum, against a WU2 observed
+  GPRC5D-negative rate of 0.961. **Most GPRC5D zeros in WashU are consistent with dropout.**
+  `TNFRSF17`'s floor falls to 8-10% when deep. Ambient floor: BCMA 1.5-5.0% of non-plasma
+  cells, **GPRC5D 0.03-0.28%** — the two biases point opposite ways and neither is corrected.
+- **Truncate-all-at-10k is discharged.** WashU unchanged (already censored — confirmation
+  of the deposit ceiling); MMRF GPRC5D detection falls a mean 0.186 and DN rises a mean
+  0.059 (max +0.182). Rank stability Spearman 0.921.
+- **Denominator uncertainty is directional, not noise:** median DN shift primary ->
+  sensitivity **+0.032**, 12 of 32 patients move >5 points, largest in MMRF (mean +0.083).
+  Spearman 0.930. Both are reported for every patient and **never collapsed**.
+- 18 of 32 patients carry no uncertainty flag. **No risk tiers assigned** — that is stage 12.
+
+**08c — Supplemental multi-antigen coverage** (`notebooks/08c_multi_antigen_coverage.ipynb`,
+`src/mm_escape/coverage.py`; env: `mm-core`; output
+`results/08_dual_antigen_escape/multi_antigen_coverage/`).
+**COMPLETE / ACCEPTED / FROZEN (2026-08-26). Stage 8 is closed; do not modify it again.**
+
+**A supplemental Stage-08 deliverable consuming frozen upstream infrastructure — NOT a
+reopening of the frozen BCMA/GPRC5D analysis.** It reads frozen clone states, frozen depth
+strata and frozen raw counts, and writes only into its own namespace. Every frozen artifact
+it consumes is hashed into `frozen_upstream_digests.json` and re-checked by
+`tests/test_coverage.py`, so a later edit to a frozen stage fails a test. It takes a
+**letter** for the same reason `05b` and `09b` did.
+
+Design frozen in `multi_antigen_design.md` **before any pair or triple was computed**.
+Panel: {`TNFRSF17`, `GPRC5D`, `SLAMF7`, `FCRL5`, `CD38`, `SDC1`, `ITGB7`}.
+
+> **The 08c scientific conclusion.** Measurement quality, not biology, is the binding
+> constraint on this panel. All seven targets are depth-dependent, two fail the predeclared
+> QC gate — one of them half the project's own anchor — and the apparent superiority of every
+> alternative pair over BCMA+GPRC5D is a **detection-rate artifact**, not a therapeutic
+> finding.
+
+Binding on stage 12:
+- **No target is `comparatively_reliable`.** Detection-vs-depth Spearman ρ runs 0.32–0.48
+  for all seven, with 3–16× spread across depth strata inside one cohort.
+- **`GPRC5D` is `COVERAGE_NOT_EVALUABLE`** — pooled expression-matched technical-zero floor
+  **0.62** against a 0.50 threshold fixed before any floor existed. **This is the frozen
+  Stage-08 conclusion reached again by an independent even-handed rule, and the threshold was
+  not relaxed to admit it.** **`GPRC5D` remains the frozen project anchor**; it fails only
+  *this supplemental seven-target comparative* criterion, and **`COVERAGE_NOT_EVALUABLE` must
+  never be read as saying the original Stage-08 GPRC5D analysis is invalid.**
+- **`SDC1` is `COVERAGE_NOT_EVALUABLE` on circularity, not on differentiation.**
+  `config.PLASMA_MATURE` is Stage 06's axis-(b) mature-plasma predicate and it is
+  `("SDC1", "TNFRSF17")`; `SDC1` is also in `MARKER_PANEL["PlasmaCell"]`. **The plasma
+  denominator was partly established using SDC1 detection.** Its *differentiation* behaviour
+  was measurable and unremarkable — SDC1-negative cells sit 0.013 below SDC1-positive on
+  secretory breadth, *better* than `TNFRSF17` (0.036), and per-cell SDC1 count is
+  uncorrelated with secretory output (ρ = +0.02 vs +0.23 for both anchor genes).
+- **`TNFRSF17` carries the same structural selection-dependence and is retained only because
+  it is the frozen anchor. That asymmetry is a disclosure, not a scientific distinction.**
+  Stated with the restraint the evidence supports: **a selection-dependence risk, not proof
+  that the BCMA estimate is invalid** — the predicate operated at cluster level and no cell
+  was removed for its own `TNFRSF17` zero. **Not a reason to reopen Stage 08 or rebuild
+  Stage 06.**
+- **`SLAMF7`, `CD38` and `ITGB7` have no clean marrow negative population**; their ambient
+  floors are `NOT_EVALUABLE` rather than invented. They pass only on ≥2× separation from an
+  imperfect erythroid/myeloid background. `SLAMF7` and `ITGB7` are threshold-hugging on
+  dropout in WashU.
+- **Anchor (primary, 32 patients):** BCMA uncovered median 0.353, GPRC5D 0.899, pair 0.335.
+  **Gain from adding GPRC5D to BCMA: median 0.011** (24/32 patients under 2 points); gain
+  from adding BCMA to GPRC5D 0.547. **This must NEVER be read as GPRC5D being clinically
+  redundant** — a target that reads zero most of the time for depth reasons cannot add
+  apparent coverage, which is exactly why it failed QC *before* any gain was computed.
+- **Every eligible alternative pair beats the anchor in 32/32 patients** (median advantage
+  0.098). **This is a detection-rate artifact.** The four alternatives are detected 1.8–2.8×
+  more often than `GPRC5D` and all carry technical-zero floors of 0.42–0.45. **No combination
+  is optimal, recommended or best** — the only permitted wording is *greatest observed
+  transcript-level malignant-cell coverage among evaluated combinations*.
+- **The frozen Stage-08 co-negativity negative result generalises to all 21 pairs**: every
+  one collapses to ~1.0 under depth conditioning (unconditioned 1.01–1.21 → conditioned
+  1.00–1.06). The synthetic depth-only control was re-run first (1.323 → 0.996).
+- **Truncate-10k: WashU completely unchanged, MMRF +0.05–0.07** — direct confirmation of the
+  deposit ceiling on the full panel; combination ordering Spearman **0.996**.
+- **Denominator disagreement is directional:** anchor moves median +0.032, 12/32 patients
+  >5 points. Both are reported, never collapsed.
+- **Within-patient instability exceeds most between-patient differences for two patients** —
+  `27522` anchor range **0.571** across six timepoints, `59114` **0.547**. Reported, not
+  pooled away.
+- **Normal marrow is expression context, never safety.** `CD38` reaches 0.656 in donor
+  plasma and **0.353 in HSPC**; `SLAMF7`/`ITGB7` carry real normal NK and T expression.
+  GPRC5D's decisive liability is keratinized tissue, which this dataset **cannot observe**,
+  and this table would misleadingly make GPRC5D look safest.
+- **No weighted utility score exists**, and `test_g_no_weighted_aggregate_exists_anywhere_in_the_module`
+  asserts it against the AST with docstrings stripped.
+
+**One depth-stratification implementation, enforced structurally.** `coverage.py` contains
+no binning code — `test_j_module_contains_no_local_depth_binning` scans its source for
+`np.quantile`, `searchsorted`, `pd.cut` and friends. The primary analysis **reads** Stage 08's
+frozen per-cell `depth_stratum_cohort` rather than re-deriving it, so no perturbation of any
+target can move a cell between strata; the truncate-10k re-stratification calls
+`antigen.quantile_edges`/`assign_strata`/`merge_sparse_strata`.
+
+**Recorded while reproducing Stage 08's reference population:** the predeclaration names
+`Tcell`/`Myeloid`/`Bcell`/`HSPC`/`NK`, but `noise_floor_ambient.csv` reproduces exactly
+(14/14 rows) from `cell_type` ∈ {`Tcell`, `Myeloid`, `Bcell`, `HSPC`} — `NK` resolved to
+nothing because Stage 06 emits no NK class. **Changes nothing about Stage 08**, whose rows are
+read from disk unchanged.
+
 **09 — Escape robustness** (`notebooks/09_escape_robustness.ipynb`,
 `src/mm_escape/bulk.py` + `robustness.py`; env: `mm-core`). Everything here exists to
 answer "how do you know your escape fractions are real?"
@@ -931,6 +1061,55 @@ answer "how do you know your escape fractions are real?"
 - **The label-permutation null lives at stage 08**, as the co-negativity test — it
   tests independence between the two negativities, not absence of signal, so it belongs
   with the co-escape enrichment and its depth-stratified null.
+
+**Stage 09 is RUN, ACCEPTED and FROZEN (2026-08-25).** Do not modify it, or Stage 08,
+after this point unless a concrete reproducibility failure is found.
+
+> **Stage 09 validates or contextualizes marginal `TNFRSF17` and `GPRC5D` abundance only.
+> Stage 09 does NOT validate `frac_double_negative`, the joint BCMA⁻/GPRC5D⁻ state,
+> co-negativity enrichment, any cell-level escape population, or any risk tier.**
+>
+> **Stage 09 is interpretation context, not an additional scoring axis.** Do not give MMRF
+> an advantage for having stronger matched-bulk validation; do not penalise the WashU
+> cohorts for lacking sorted-bulk validation; do not make bulk concordance a requirement
+> for `robust-high` or `robust-low`; do not use bulk to modify any frozen Stage-08 number.
+
+Results carried forward (17 exact matches, **14 patients**; MMRF 9 / WU1 5):
+- **MMRF malignant-cell pseudobulk reproduces CD138⁺-sorted bulk strongly for both
+  antigens — Spearman 0.933 each** under the primary denominator. This is the project's
+  strongest external support for its marginal antigen measurements.
+- **Low WashU single-cell GPRC5D detection coexists with substantial bulk GPRC5D.** WashU
+  bulk carries *more* GPRC5D than MMRF bulk (median 116.2 vs 74.4 TPM) while detecting it
+  at a quarter the rate (0.074 vs 0.298); `77570` is bulk 116.6 against sc detection 0.024.
+  **Extreme WashU GPRC5D negativity is therefore strongly compatible with technical
+  dropout/capture limitation** — corroborating the Stage-08 technical-zero floor without
+  changing it.
+- **BCMA marginal detection is considerably more reliable than GPRC5D.**
+- Normal marrow (8 donors, 647 plasma cells, donor as the unit): BCMA detection median
+  0.377, GPRC5D 0.009, and 0.000 GPRC5D in every donor's T and myeloid cells. **Marrow
+  expression context only** — never safety, clone identity, or joint-DN.
+- **Bulk cannot establish a joint DN fraction**, by construction.
+- WU1 correlations (n = 5) are underpowered and support no conclusion; the two bulk
+  cohorts are different assays and pooled rows are not a single interpretable validation.
+- Forensics: 2 header-only stubs; `MMRF_1686` stacks two runs and is **averaged, never
+  summed**; `47499` / `59114_2` / `98433` have no scRNA counterpart and are `NOT_EVALUABLE`
+  rather than inferred.
+
+**Stage 09 did NOT identify a biologically validated joint-DN threshold, and no DN cutoff
+may be presented as supported by bulk.**
+
+**The Stage-08/09b risk tiers are PROVISIONAL, and the word "final" has been retired from
+them (2026-08-25).** They live at `results/08_dual_antigen_escape/risk_tier_provisional/`
+and are **measurement-robust provisional tiers under the frozen Stage-08/09b rule** — a
+`robust-high` label means the observed DN fraction survived the denominator, depth,
+repeated-sample, null-scheme and threshold sensitivity analyses, and **nothing more**.
+> **Stage 10 sits between provisional measurement-robust tiering and any final biological
+> risk classification.** No provisional tier may be cited as a final biological escape
+> classification until stage 10's coherence states are frozen.
+Provisional outcome: 4 `robust-high` (`MMRF_1267`, `MMY18273`, `MMY74196`, `MMY98423`),
+28 `uncertain`, **0 `robust-low`**, all 32 `THRESHOLD_ROBUST` across
+`TAU_HIGH` ∈ {0.20, 0.25, 0.33}. The relabelling changed **no** patient membership, no
+threshold, no measurement and not the algorithm — provenance and terminology only.
 
 **10 — Escape subclone + phenotype** (`notebooks/10_escape_subclone_phenotype.ipynb`,
 `src/mm_escape/subclone.py`; env: `mm-core`). **The project's actual scientific payoff**
@@ -1031,39 +1210,247 @@ rather than another robustness check.
   into seven bins to support a test the cohort cannot power, and its signatures need
   supplement sourcing, while TC delivers most of the interpretive value for far less.
 
-**11 — Cell-cell communication** (`notebooks/11_cellchat_liana.ipynb`,
-`src/mm_escape/communication.py`; env: `mm-communication`). LIANA+ using the
-CellChat-algorithm method specifically (or the full consensus rank-aggregate).
-Tests whether high-escape-risk patients show weaker NK/T-cell engagement toward
-malignant plasma cells.
+**Stage 10 is COMPLETE and FROZEN (2026-08-25), through the full three-level evidence
+hierarchy.** Results: `results/10_dn_coherence/`.
 
-**This stage is explicitly EXPLORATORY and is presented as such (decided
-2026-08-21).** It is ninth in the scientific hierarchy near the top of this document,
-not co-equal with the antigen analysis. The reason is power, not interest: n ≈ 41
-patients before the stage-08 malignant-cell inclusion rule and fewer after, against a
-ligand-receptor search space of hundreds of interactions with a confounder (T/NK
-abundance) that is itself correlated with the predictor. That combination does not
-support a confirmatory claim. Label its outputs exploratory, report effect sizes with
-CIs rather than a filtered list of significant hits, and promote a finding to
-foreground only if it is strong, stable across the LIANA+ methods, and survives the
-abundance covariate. Left un-demoted, this is the stage that turns a focused antigen
-project into a kitchen-sink scRNA project.
+### The three levels are independent axes and are never combined
 
-**Statistical design corrected from the original plan.** The original "split into
-high/low tertiles and compare" approach pools cells across patients into two
-groups, which is **pseudoreplication** — it treats thousands of cells from one
-patient as thousands of independent observations, inflating significance
-arbitrarily. Instead:
-- Compute **per-patient** LR interaction scores; the patient is the unit of
-  replication, n ≈ 41, not n ≈ 172,940.
-- Model `frac_double_negative` as a **continuous predictor** across patients rather
-  than binarizing into tertiles. This avoids an arbitrary cutoff and has strictly
-  more power than discarding the middle tertile.
-- **Control the obvious confounder.** High-escape patients may simply have fewer
-  T/NK cells, in which case "weaker signaling" is a composition artifact, not
-  immune evasion. Include cell-type abundance (from stage 06) as a covariate, and/or
-  downsample to equal per-cell-type counts per patient before running LIANA+. This
-  confounder is fatal to the stage's claim if unaddressed, so it is not optional.
+| level | states | licenses |
+|---|---|---|
+| **1 — DN structure** | `DN_STRUCTURE_SUPPORTED` **4** · `NOT_SUPPORTED` **23** · `NOT_EVALUABLE` **5** | *non-random DN organization* — **nothing more** |
+| **2 — DN phenotype** | `DN_STATE_SUPPORTED` **26** · `NOT_SUPPORTED` **1** (`MMY67868`) · `NOT_EVALUABLE` **5** | *escape-associated transcriptional state* |
+| **3 — genomic** | `CNV_SUBCLONE_NOT_EVALUABLE` **32 (all)** | nothing |
+
+**Level 1 alone is NOT an escape-associated transcriptional state.**
+**`CNV_SUBCLONE_NOT_SUPPORTED` is never emitted or implied, and no patient may be called a
+genetic escape subclone.**
+
+> **The predeclared per-patient Level-2 criterion proved weakly discriminative, with 26/27
+> evaluable patients satisfying it. `DN_STATE_SUPPORTED` therefore indicates compatibility
+> with the cohort-level DN-associated program and should not be interpreted as strong
+> patient-specific evidence of a distinct escape state.** The rule was **not** retuned
+> after seeing that result. **The scientifically useful Level-2 result is the cohort-level
+> transcriptional phenotype.**
+
+### The frozen Level-2 biological conclusion
+
+> DN cells exhibit a reproducible **cohort-level** transcriptional shift characterised by
+> reduced plasma-cell secretory/differentiation, antigen-presentation, OXPHOS and
+> interferon programs. **This supports a biological state associated with observed DN
+> status, but does not establish antigen-specific escape.** Patient-level Level-2
+> classification is weakly discriminative, and independent genomic subclone evidence is not
+> evaluable.
+
+**Keep "biology associated with DN status" and "antigen-specific escape mechanism"
+distinct. The latter is not claimed.**
+
+Reproducible DN-**lower** programs (BH < 0.10 under **both** denominators, consistent
+sign): **antigen presentation · OXPHOS · interferon**. Not reproducible: **MYC · stress ·
+UPR · γ-secretase**. Do not search additional programs.
+
+**Pseudobulk DE — 190 genes significant under both denominators**, paired over patients on
+depth-matched cells. Many DN-lower genes are ER/secretory-machinery and mature plasma-cell
+identity genes (`SPCS1`, `SPCS2`, `SEC61B`, `UBE2J1`, `TMBIM6`, `MZB1`, `B2M`).
+**The DN phenotype is compatible with a less secretory / less differentiated plasma-cell
+state.** Never write that DN cells "specifically evolved an antigen-escape program".
+**The present data cannot separate a broad plasma-cell-state shift from an antigen-specific
+escape mechanism**, and BCMA/GPRC5D are themselves secretory-pathway-dependent surface
+proteins, which is exactly why the two are confounded here.
+
+### The pre-registered γ-secretase result is a clean NEGATIVE
+
+Frozen five-gene hypothesis, **no gene added after seeing results**: `NCSTN`, `PSEN1`,
+`APH1A`, `APH1B`, `PSENEN`. **Not supported** under the frozen both-denominators rule
+(depth-matched BH 0.387 primary / 0.070 sensitivity). **The direction is opposite to the
+pre-registered γ-secretase-high prediction.** This stays visible in the stage-10 summary.
+
+### The depth lesson — now the THIRD independent instance
+
+Depth conditioning altered the biological interpretation again at Level 2: matching moved
+the DN/comparator depth ratio from **~0.470 to ~0.992**; **γ-secretase looked strongly
+negative before matching and not after**; **MYC changed sign**; OXPHOS was the strongest
+depth-tracking program tested (ρ 0.274).
+
+> **Three independent places where naive/unconditioned analysis was materially misleading:
+> (1) stage 08 co-negativity enrichment, (2) stage 10 Level-1 DN structure, (3) stage 10
+> Level-2 transcriptional phenotype.**
+
+`MMRF_1640` remains the project-level example — **Moran's I 0.47, unconditioned p 0.001,
+depth-stratified p 0.499**. This is part of the frozen methodological result, **not** a
+prompt for another correction or rerun.
+
+**decoupler** (Hallmark/PROGENy/CollecTRI, full tested space retained): E2F targets / G2M /
+MAPK up, p53 / OXPHOS / JAK-STAT down. **Limitation, retained: decoupler ULM significance
+is based on the fitted contrast vector and is not an independent patient-replicated
+hypothesis test.** These p-values may not create patient states or upgrade Level-2 evidence.
+
+**TC-like subtype** stays per-patient, a transcriptional proxy, **descriptive only**, never
+a translocation diagnosis, and never an input to structure/state calls. No association
+testing.
+
+### Cross-axis — four separate axes, no combined score, ever
+
+Measurement **4 / 28 / 0** · Level-1 **4 / 23 / 5** · Level-2 **26 / 1 / 5** ·
+Level-3 **32 not evaluable**.
+
+> **No patient is simultaneously measurement-robust-high, Level-1 structure-supported and
+> Level-2 state-supported.**
+>
+> **The apparent measurement-high × Level-2 overlap of four patients is not strongly
+> discriminative, because Level-2 support occurs in 26 of 27 evaluable patients.**
+
+**Do not invent a combination rule or a scalar risk score.**
+
+**Superseded detail:** the earlier "run/accepted" record for stage 10, the measurement-vs-
+coherence axis table and the `MMRF_1640` write-up are folded into the frozen block above.
+The measurement axis remains `measurement_robust_high` / `measurement_uncertain` /
+`measurement_robust_low`, and the observed cross-tab is itself a result that must not be
+"fixed". Full history: `docs/decisions-archive.md`.
+
+**11 — Exploratory immune context** (`notebooks/11_immune_context.ipynb`,
+`src/mm_escape/communication.py`; env: `mm-communication`; output `results/11_immune_context/`).
+**RUN, ACCEPTED and FROZEN (2026-08-26).** Design frozen in `stage11_design.md` before any
+immune data was read; three dated amendments recorded there. The paused first run is preserved
+in `preliminary_run/` and reproduced exactly by the notebook (max drift **1.78e-15**).
+
+Note the stage's **name and number changed from the original plan** — it is `11_immune_context`,
+not `11_cellchat_liana`, because a full-interactome LIANA/CellChat screen was deliberately not
+run. Number order is still execution order.
+
+**This stage is EXPLORATORY by declaration and non-tier-changing** — ninth in the scientific
+hierarchy. The reason is power, not interest: n ≈ 32 patients against a confounder (T/NK
+abundance) that is itself correlated with the predictor. It may not rescue, upgrade, downgrade
+or create any classification, and a regression test asserts that changing tier labels cannot
+alter any Stage-11 result.
+
+**Statistical design (corrected from the original plan, and unchanged since it froze).**
+Patient is the unit of replication, never the cell — the original "high/low tertile" framing
+was pseudoreplication. `frac_double_negative` enters as a **continuous** predictor. Immune
+fractions are compositional, so features enter every model as **centred log-ratios** over one
+frozen denominator (all non-plasma annotated cells). The confound model is
+`CLR(feature) ~ DN predictor + cohort + log10(immune depth) + log10(n immune) + log10(n samples)`,
+with the **unadjusted estimate always reported beside the adjusted one**.
+
+> **The Stage-11 scientific conclusion.** No immune-composition association survives
+> multiple-testing correction, and the one communication interaction that does is explained by
+> a receiver-side confound.
+
+On the record, and binding on stage 12:
+- **0 of 28 composition tests reach BH < 0.10.** Two reach raw p < 0.05 adjusted — `NK_core`
+  against both DN denominators, +1.70 and +2.01, same sign in all three cohorts — both at
+  **BH ≈ 0.49**, and both **fragile**: re-expressed as a log-fraction they give p = 0.16 / 0.21.
+  **A candidate direction, not a finding.**
+- **`NK_core` is itself depth-tracking and cohort-varying**, which was stated before its
+  association was read. Three of seven features track depth; four differ by cohort; the
+  erythroid gap is **27×** (MMRF 0.296 vs WU1 0.011) and is a cell-recovery property.
+- **The coherence axis yields nothing** (27 patients, 4 supported; smallest p = 0.077, BH 0.27).
+  The two DN axes are never combined into a composite predictor.
+- **Within-patient immune composition varies more than between patients** (`Tcell` range 0.468
+  within `58408`), which is a further reason the n ≈ 32 associations are weak evidence.
+- **Q4 communication is discovery-only** — a predeclared 17-pair candidate set, not a screen.
+  **`Tcell PDCD1 → CD274` is NOT a candidate immune-evasion axis** and must never be written up
+  as one.
+
+**Amendment 1 (receiver definition).** The paused first run used all Stage-06 plasma cells as
+the receiver; the frozen design specified the **clone** plasma population. Corrected back to
+the design on resume; **both versions are kept on disk and reported** (`*_all_plasma.csv`),
+because the correction was made after the first result was visible. The correction makes the
+panel look *stronger* — 5 hits at BH < 0.10 against 1 — **and that is treated as a warning.**
+
+**Amendment 2 (the receiver-side confound), and the FOURTH instance of this project's
+recurring lesson.** The receptor term of every LR score is measured on the *same plasma cells*
+whose DN status is the predictor, and Stage 10 froze the finding that DN cells occupy a less
+secretory, less differentiated plasma-cell state. Tested alone under the identical model,
+**11 of 15 receptors move down with DN burden, 5 at raw p < 0.05**, across receptors with
+nothing biologically in common. The panel is reading a broad plasma-cell-state shift, not an
+immune axis.
+
+> **Four independent places where naive/unconditioned analysis was materially misleading:
+> (1) stage 08 co-negativity enrichment, (2) stage 10 Level-1 DN structure, (3) stage 10
+> Level-2 transcriptional phenotype, (4) stage 11 Q4 communication.** Instance (4) is the odd
+> one out — its confound is not sequencing depth but the plasma-cell state Stage 10 itself
+> established, reached through a different door.
+
+**Amendment 3 (depth definition).** The Stage-11 depth covariate is the row sum over the
+**intersected 32,991-gene space** minus the two antigens, matching Stage 08 — not
+`obs["total_counts"]`, which was computed at QC time over each sample's full Cell Ranger
+reference and runs a few counts higher (up to 14 on a per-patient median).
+
+**Reusable additions to `communication.py`:** `stream_gene_counts` (block-reads named columns
+out of a CSR layer without materialising the 172,940 × 32,991 matrix) and `pseudobulk_cpm`
+(pooled, not a mean of per-cell rates — a mean would weight a 300-UMI WashU cell like a
+20,000-UMI MMRF one). `LR_SENDERS` and `MIN_SENDER_CELLS` (= the frozen `MIN_GROUP_CELLS`, 20).
+
+**11b — LIANA verification arm** (`notebooks/11b_liana_verification.ipynb`; env:
+`mm-communication`; output `results/11_immune_context/liana_verification/`).
+**COMPLETE / ACCEPTED / FROZEN (2026-08-26)**, as a dated addendum to Stage 11 and kept
+**explicitly separate** from the original custom Stage-11 communication analysis.
+
+**Exploratory · post hoc · non-tier-changing · non-classifying.** It does **not** reopen,
+replace or rewrite the frozen Stage-11 custom analysis, which stands unchanged. It takes a
+**letter**, like `05b`/`09b`/`08c`.
+
+> **The accepted Stage-11 interpretation, final wording.** Stage 11 found **no robust
+> independent evidence that immune composition or ligand–receptor communication explains the
+> observed DN phenotype**. The targeted LR analysis was **receiver-state confounded**, and
+> **LIANA verification did not rescue that interpretation**. The strongest LIANA consensus
+> association was **structurally circular** because its receptor was `TNFRSF17`, one of the
+> antigens defining the DN predictor.
+>
+> **This language may not be strengthened, and LIANA is never described as a validation of
+> immune evasion.** The historical custom analysis was not performed with LIANA and must
+> never be written up as if it were.
+
+- **Config:** `liana 1.8.1`; `rank_aggregate` RRA consensus (CellPhoneDB, Connectome,
+  log2FC, NATMI, SingleCellSignalR) **plus** `cellchat` run separately for continuity;
+  resource `consensus` held **fixed for both** so method and resource are not confounded;
+  `expr_prop` 0.1 / `n_perms` 1000 / `seed` 1337 (LIANA defaults); `min_cells` 20 (the frozen
+  `MIN_SENDER_CELLS`). **Both methods preserved; no alternate resource was tried.**
+- **Per-patient via `Method.by_sample`** — LIANA's own documented per-sample API, not one
+  pooled run whose global scores would be passed off as patient observations.
+- **Score orientation differs by method and is recorded:** consensus `magnitude_rank`
+  (lower = stronger) → `-log10`; cellchat `lr_probs` (higher = stronger) → identity. Both
+  oriented so a positive coefficient always means stronger communication with higher DN.
+- **31 of 32 patients evaluable.** `25183` is `LIANA_NOT_EVALUABLE` because it contributes
+  **zero immune sender cells**, so no sender→receiver pair exists. **This is a
+  biological/evaluability exclusion, not a software failure**, and it is consistent with the
+  frozen Stage-11 communication design, where `25183` is likewise the one patient absent from
+  the custom communication table.
+- **1,050 interactions/patient; 87 tested at ≥20 patients; 12 raw p<0.05; 1 at BH<0.10.**
+  The frozen Stage-11 confound model was used unchanged.
+- **`Myeloid TNFSF13B → TNFRSF17` (BAFF→BCMA)** is the only consensus BH<0.10 hit
+  (coef −1.284, BH 0.0054), reproduced by CellChat (BH 0.0104) and under the all-plasma
+  receiver (BH 0.0271). **`obs_dn_primary` is the fraction of receiver cells negative for
+  `TNFRSF17` and `GPRC5D`, so the negative coefficient is arithmetic.** Classified
+  `RECEIVER_STATE_CONFOUNDED`; **100% of consensus BH hits are antigen-circular.**
+  **This association is not interpretable as evidence of immune communication driving the DN
+  phenotype.** The row is **flagged and preserved in the raw output, never excluded**, and
+  the **antigen-circularity test is permanent** (any interaction touching `TNFRSF17` or
+  `GPRC5D` is structurally circular for this question). The most useful result of the arm:
+  an unrestricted LR resource reintroduces exactly the circularity the targeted panel was
+  designed to exclude, and ranks it first.
+- **Receiver-side decomposition is mandatory and was run on all 12** raw-significant
+  interactions: **3 `RECEIVER_STATE_CONFOUNDED`, 9 `NOT_REPRODUCED_BY_LIANA`, 0
+  `EXPLORATORY_LIANA_ONLY`.** 2 of 12 are `ABUNDANCE_SENSITIVE`.
+- **The pooled Stage-10 receiver-state test is weak and reported as such** — receptor pool vs
+  antigen presentation ρ = −0.349 (p = 0.050), secretory/OXPHOS/depth all n.s. The
+  per-interaction decomposition, not this pooled test, identified the confounded ones.
+- **`PDCD1 → CD274` = `NOT_EVALUABLE_BY_LIANA_RESOURCE`** — absent from LIANA's `consensus`
+  resource (`in_liana_resource = False`, `panel_status = NOT_EVALUABLE`). **LIANA did not
+  disprove it and did not support it.** The frozen custom Stage-11 conclusion remains
+  operative: **receiver-state confounded and not accepted as an immune-evasion axis.**
+- **Only 8 of the 17 frozen custom pairs are in LIANA's resource**, only **one row** reached
+  the 20-patient floor, and **0 are `CONSISTENT_WITH_TARGETED_PANEL`**. **LIANA is therefore a
+  partial methodological verification arm, not a full reproduction of the targeted 17-pair
+  panel**, and **missing resource coverage is not a negative biological result.**
+- **Poor cross-method agreement, and it stays visible** — consensus and CellChat share 3 of
+  12/10 raw-significant interactions; CellChat's `MIF→TNFRSF14` hits flip sign between
+  cohorts. **CellChat-specific hits are not promoted merely because there are more of them.**
+- **`IMMUNE_EVASION_CONFIRMED` is not an available label**, and a test asserts it is never
+  emitted as a value.
+- **LIANA changed no tier, structure state, phenotype state, composition conclusion or
+  coverage eligibility, and created no patient classifier.** Digests of five frozen state
+  files are recorded and re-checked by `tests/test_liana_verification.py` (18 tests, A–J).
 
 **12 — Decision packet** (`notebooks/12_decision_packet.ipynb`; env: `mm-core`).
 The final stage; consumes the output of everything upstream. Assembles:
@@ -1116,11 +1503,36 @@ The final stage; consumes the output of everything upstream. Assembles:
 
 ## Status / immediate next step
 
-**Stages 01-05b are run and verified. Stage 06 (annotation) is the next artifact.**
-`raw/` is intact at 62 samples, the five `envs/*.yml` are built with kernels registered,
-and `src/mm_escape/` holds `config.py`, `gene_space.py`, `io.py`, `qc.py`,
-`integration.py` and `benchmark.py`. Run output and module validation logs are in
-`docs/stage-results.md`; `RESUME_HERE.md` carries exact session state.
+### Freeze status — the single source of truth
+
+| stage | status |
+|---|---|
+| 01–05b acquisition, QC, integration, benchmark | **FROZEN** |
+| 06 annotation | **FROZEN** (accepted C2d) |
+| 07 malignant plasma | **FROZEN** (2026-08-25) |
+| **08 core** dual-antigen escape | **FROZEN** (2026-08-25) — do not reopen |
+| **08c supplemental** multi-antigen coverage | **COMPLETE / ACCEPTED / FROZEN** (2026-08-26) — Stage 8 is closed |
+| 09 bulk validation | **FROZEN** (2026-08-25) |
+| 09b provisional measurement tiers | **FROZEN** (2026-08-25, provisional by design) |
+| 10 DN coherence | **FROZEN** (2026-08-25) |
+| **11 custom immune context** | **FROZEN** (2026-08-26) |
+| **11b LIANA verification arm** | **COMPLETE / ACCEPTED / FROZEN** (2026-08-26) |
+| **12 decision packet** | **NOT STARTED** |
+
+**Before Stage 12** the next planned work is an **independent whole-codebase audit with
+Codex** plus **independent project-process reconstruction documents** from Claude Code and
+Codex. **No further biological analysis before that checkpoint unless a concrete
+reproducibility defect is discovered.**
+
+
+**Stages 01 through 11 are run, accepted and FROZEN, and the supplemental 08c coverage
+deliverable is complete. Stage 12 (decision packet) is the only remaining Phase-1 stage.** `raw/` is intact at 62 samples, the five `envs/*.yml` are built with
+kernels registered (`mm_escape` now imports editable in `mm-communication` too), and
+`src/mm_escape/` holds `config.py`, `io.py`, `gene_space.py`, `qc.py`, `integration.py`,
+`benchmark.py`, `annotation.py`, `malignant.py`, `antigen.py`, `bulk.py`, `risk_tiers.py`,
+`subclone.py`, `communication.py` and `coverage.py`. Run output and module validation logs are
+in `docs/stage-results.md`; `RESUME_HERE.md` carries exact session state. **507 tests pass**
+(`pytest -m "not slow"`).
 
 **Supplementary Table S1 is in the repo and parsed.** The patient mapping is resolved
 (41 patients / 53 in-cohort samples), the `_N` suffixes are confirmed as serial
@@ -1129,22 +1541,28 @@ so stage 10's TC class has nothing in this deposit to validate against and stays
 proxy, and stage 12's karyotype annotation is not available. The full account of what
 S1 did and did not close is in `docs/decisions-archive.md`.
 
-First actions, in order:
-1. Write `src/mm_escape/annotation.py` and `notebooks/06_annotation.ipynb` in
-   **`mm-annotation`** (needs `pip install -e . --no-deps` in that env first — it was
-   only done for `mm-qc` and `mm-core`).
-2. Run all three methods and compare per class against the F1 thresholds **declared in
-   advance** (PlasmaCell 0.95 / T-NK-myeloid 0.90 / rest 0.85). Do not settle this
-   implicitly by whichever runs first. Write
-   `results/06_annotation/annotation_decision.md`.
-3. The marker-coverage test is the load-bearing evidence, not the concordance numbers —
-   a label set can be perfectly self-consistent and biologically wrong, and it must be
-   run **on myeloma marrows specifically**, not only the donors.
-4. Emit the interface contract exactly: `cell_type`, `cell_type_fine`,
-   `annotation_source`, `annotation_conf`, plus `config.ANNOTATION_DECISION`. Stages
-   07-12 read `cell_type` and nothing else.
-5. Score the orthogonal state programs as **continuous** `obs` floats — never let them
-   leak into `cell_type`.
+### The previously missing Stage-08 deliverable is now complete
+
+**The multi-antigen pair/triple coverage and incremental-gain matrix was produced on
+2026-08-26** as stage **08c**, in the separated namespace
+`results/08_dual_antigen_escape/multi_antigen_coverage/`, without reopening Stage 08 —
+every frozen artifact it consumes is hashed and re-checked by a test. See the 08c block
+above for the full frozen record; `stage12_multi_antigen_interface.csv` is the compact
+per-patient file Stage 12 consumes.
+
+**What Stage 12 must carry forward from it:** two of seven targets are `COVERAGE_NOT_EVALUABLE`
+(`GPRC5D` on dropout, `SDC1` on circularity); no target is depth-robust; the alternative-pair
+advantage is a **detection-rate artifact**; and no combination may be called optimal,
+recommended or best.
+
+### First actions, in order
+
+1. ~~Build the multi-antigen coverage matrix.~~ **Done as stage 08c (2026-08-26).**
+2. Stage 12 — the decision packet, the last Phase-1 stage. **Risk tiers, never a rank
+   ordering**, caterpillar plot with CIs, and the evidence axes carried as separate columns.
+   It now consumes five distinct evidence layers: measurement tiers (08/09b), DN coherence
+   (10), immune context (11), multi-antigen coverage (08c), and the bias-direction table.
+3. Phase 2 (GSE117156) strictly after that.
 
 ### S1-gated additions, now unblocked
 
@@ -1166,12 +1584,13 @@ Chosen so the project has several presentable stopping points rather than being
 all-or-nothing:
 
 1. ~~Re-confirm `scripts/01-03` → scaffold `src/mm_escape/` + envs.~~ **Done.**
-2. Stages 04-08 core path. **04, 05, 05b done.**
+2. Stages 04-08 core path. **All done and frozen.**
    **First presentable state: escape fractions with co-escape enrichment.**
-3. Stage 08's defense layer (sensitivity band, dropout checks, CIs) + stage 09.
+3. ~~Stage 08's defense layer (sensitivity band, dropout checks, CIs) + stage 09.~~ **Done.**
    **Second presentable state: a ranking that survives hostile questioning.**
-4. Stage 10 (subclone test + phenotype). **Third: the actual scientific finding.**
-5. Stage 11 (communication), then stage 12 (decision packet) last.
+4. ~~Stage 10 (subclone test + phenotype).~~ **Done. Third: the actual scientific finding.**
+5. ~~Stage 11 (immune context).~~ **Done and frozen.** Remaining: the multi-antigen coverage
+   matrix, then stage 12 (decision packet) last.
 6. Phase 2 (GSE117156) — strictly last.
 
 ---
@@ -1257,7 +1676,15 @@ that merely restate the Data or Environments rules above are not repeated here.
   optimistic CIs and this is stated.
 - **Risk tiers are the deliverable; ranking stability is the diagnostic.**
 - **No composite risk score, anywhere** — the inputs stay separate columns so a reader can
-  disagree with them.
+  disagree with them. The 08c coverage matrix obeys the same rule: no `coverage − λ · exposure`
+  utility, and a test asserts none exists.
+- The multi-antigen panel is **measurement-limited, not biology-limited**. `GPRC5D` and `SDC1`
+  are `COVERAGE_NOT_EVALUABLE`; alternative pairs look better only because their transcripts
+  are detected more often; no combination is ever called optimal or recommended.
+- **`SDC1` and `TNFRSF17` are both in `config.PLASMA_MATURE`**, Stage 06's axis-(b) plasma
+  predicate, so both are selection-dependent. `SDC1` is excluded on that basis; `TNFRSF17`
+  is retained as the frozen anchor with the limitation disclosed. Do not re-open this as if
+  it were a new discovery — it is recorded in the 08c design and summary.
 - Matched bulk validates **antigen abundance**, never the dual-negative fraction, which is
   a joint quantity bulk destroys by construction. The two bulk cohorts are never pooled.
 - **"Subclone" requires CNV support**; level 3 reports *supported / not evaluable*, never
@@ -1267,7 +1694,10 @@ that merely restate the Data or Environments rules above are not repeated here.
   expression subtype** — never a translocation call.
 - The γ-secretase hypothesis is pre-registered.
 - Stage 11 is exploratory and ranks ninth; patient is the unit of replication, escape
-  fraction is a continuous predictor, T/NK abundance is controlled.
+  fraction is a continuous predictor, T/NK abundance is controlled. **Run and frozen: nothing
+  survives correction, and its one communication hit is a receiver-side confound — the fourth
+  instance of naive analysis misleading in this project. `Tcell PDCD1 → CD274` is never
+  written up as an immune-evasion axis.**
 
 **Phase 2**
 - GSE117156 is confirmed; GSE118900 was evaluated and rejected; He et al. 2022 has no
