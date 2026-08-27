@@ -2,7 +2,9 @@
 
 Detail split out of `CLAUDE.md` on 2026-08-24 to keep that file under its size
 budget. `CLAUDE.md` keeps the env→stage table and the two hard rules; everything
-below is the full record: the five `envs/*.yml` bodies, what the channels actually
+below is the full record. **Five environments are built; six YAML specifications exist** —
+`envs/env-composition.yml` (scCODA) is written but deliberately not built. The five built
+bodies follow, what the channels actually
 carried versus what the specs asked for, the verification results, and the build
 traps that were hit for real.
 
@@ -197,3 +199,18 @@ Two build traps, both hit for real:
   embeddings; BBKNN yields a corrected neighbour *graph* and no embedding, so it cannot
   be placed on the same footing. It is installed anyway because it is small and pure
   Python, keeping a graph-only side diagnostic possible.
+
+---
+
+## As-built exports (pre-Stage-12 freeze, 2026-08-26)
+
+The bodies above are the **build specifications**. The **as-built resolved state** of all
+five environments at the Stage 06–11b freeze is exported under `provenance/environments/`
+(`conda list --explicit`, `conda env export --no-builds`, `pip freeze`, and R package
+tables for `mm-qc`/`mm-annotation`), with key versions summarised in
+`provenance/environments/ENVIRONMENT_SUMMARY.md`. Where a spec and an export disagree,
+**the export describes what actually ran**.
+
+Note also the writable-cache requirement the Codex audit hit: under a restricted install,
+Scanpy/Numba collection fails with "no locator available" unless `NUMBA_CACHE_DIR` points
+somewhere writable. That is environmental, not a test failure.

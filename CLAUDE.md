@@ -425,6 +425,27 @@ across three notebooks does not. This protects two things: Codex reviews `.py` d
 rather than notebook JSON, and logic with one home cannot drift between copies — which
 is exactly what made `mm_dual_antigen_escape_pipeline.md` go stale once already.
 
+### `production/` and `provenance/` — the freeze record (added 2026-08-26)
+
+The pre-Stage-12 Codex audit found that the frozen Stage 07-10 tables had **no committed
+producer**: the authoritative notebooks read the CSVs they narrate. The producers were
+recovered **verbatim** from the session transcripts and are now committed:
+
+- **`production/`** — the exact historical drivers, by stage and run order
+  (`s07a`…`s07j`, `s08a`…`s08e`, `s09a`…`s09d`, `s09b1`…`s09b4`, `s10a`…`s10g`), each with
+  a provenance header naming its session, execution timestamp and outputs.
+  **Never run these to check a number** — every one writes into `results/` and would
+  overwrite a frozen artifact. See `production/README.md`.
+  Note `production/stage08/s08c_*.py` is Stage-08 *step c*, unrelated to notebook `08c`.
+- **`provenance/frozen_artifacts_pre_stage12.tsv`** — 393 rows covering stages 04-11b:
+  path, size, SHA256, role, committed producer, environment, freeze date and
+  reproducibility class. `provenance/environments/` carries the as-built exports of all
+  five conda environments. See `provenance/README.md`.
+
+`results/` stays gitignored. The manifest is what makes its state checkable; a hash
+mismatch means a frozen artifact mutated and is a stop-work event, never a reason to
+regenerate the manifest.
+
 **`scripts/01-03` are retained as a headless CLI fallback**, not deleted — already
 solved and verified, useful on a fresh clone or in CI. Notebooks 01-03 **call into
 them** and must never reimplement them; the scripts' output is the contract and
@@ -438,8 +459,9 @@ byte-identical parity is verified both directions.
   `RESUME_HERE.md` current as work proceeds (session state, not decisions —
   decisions belong here).
 - Route code review through Codex on the **paired `.py` files**, not raw
-  `.ipynb`. `jupytext --sync` keeps the pair in lockstep; review the `.py`, then
-  re-sync into the notebook.
+  `.ipynb`. **Never `jupytext --sync`** (see the notebook-pairing rule above — it has
+  silently dropped cells three times); convert explicitly in the `.py → .ipynb`
+  direction with `jupytext --to notebook`, then re-execute.
 - Every module in `src/mm_escape/` should be reviewable and lightly testable
   independent of any notebook.
 
@@ -467,7 +489,12 @@ details: `docs/stage-results.md`.
 
 **Stages 01-05b are RUN.** The blocks below say what each produced and what it binds
 downstream. **Full run output, tables and figures: `docs/stage-results.md`**, and the
-`results/*.csv` files are the source of truth over any table reproduced anywhere.
+frozen scientific outputs are local/archived artifacts authenticated by the committed
+freeze manifest `provenance/frozen_artifacts_pre_stage12.tsv`; committed production code
+(`production/`, `notebooks/`, `src/`) and the provenance metadata define how those
+artifacts were produced and verified. A `results/*.csv` on disk outranks any table
+reproduced in prose, but only once its hash matches the manifest — an ignored local file
+is not by itself durable provenance.
 
 **01-03 — Data acquisition** (`mm-qc`) — **RUN.** 62/62 `triplet-ok`; manifest
 byte-identical via notebook and CLI. Notebooks **wrap** `scripts/01-03` (bash ones via
@@ -1020,7 +1047,7 @@ target can move a cell between strata; the truncate-10k re-stratification calls
 nothing because Stage 06 emits no NK class. **Changes nothing about Stage 08**, whose rows are
 read from disk unchanged.
 
-**09 — Escape robustness** (`notebooks/09_escape_robustness.ipynb`,
+**09 — Escape robustness** (`notebooks/09_bulk_validation.ipynb`,
 `src/mm_escape/bulk.py` + `robustness.py`; env: `mm-core`). Everything here exists to
 answer "how do you know your escape fractions are real?"
 - **Matched bulk RNA-seq — orthogonal validation of antigen *abundance*, not of the
@@ -1111,7 +1138,7 @@ Provisional outcome: 4 `robust-high` (`MMRF_1267`, `MMY18273`, `MMY74196`, `MMY9
 `TAU_HIGH` ∈ {0.20, 0.25, 0.33}. The relabelling changed **no** patient membership, no
 threshold, no measurement and not the algorithm — provenance and terminology only.
 
-**10 — Escape subclone + phenotype** (`notebooks/10_escape_subclone_phenotype.ipynb`,
+**10 — Escape subclone + phenotype** (`notebooks/10_dn_coherence.ipynb`,
 `src/mm_escape/subclone.py`; env: `mm-core`). **The project's actual scientific payoff**
 rather than another robustness check.
 - **Is the double-negative population structured, or scattered noise?** "3% of this
@@ -1231,6 +1258,16 @@ genetic escape subclone.**
 > patient-specific evidence of a distinct escape state.** The rule was **not** retuned
 > after seeing that result. **The scientifically useful Level-2 result is the cohort-level
 > transcriptional phenotype.**
+
+> **Binding on Stage 12 (audit H2, 2026-08-26).** *The per-patient Level-2 state is a weak
+> compatibility label, not a discriminative risk classifier. The cohort-level phenotype is
+> the scientifically informative result.* Stage 12 may report `level2_state` as a column
+> and must never use it as a rank, a risk score, a tie-breaker, or evidence of a subclone.
+> `subclone.level2_state()` now validates every program name against the frozen
+> `config.LEVEL2_PROGRAMS` and raises `UnknownProgramError` otherwise, so a post-hoc
+> program has no route into a patient state call. That guard is a hardening of the library
+> function; it changed no frozen value — the frozen run was already bounded because every
+> program loop in the recovered Stage-10 drivers iterates `config.LEVEL2_PROGRAMS`.
 
 ### The frozen Level-2 biological conclusion
 
@@ -1523,6 +1560,23 @@ The final stage; consumes the output of everything upstream. Assembles:
 Codex** plus **independent project-process reconstruction documents** from Claude Code and
 Codex. **No further biological analysis before that checkpoint unless a concrete
 reproducibility defect is discovered.**
+
+**The Codex pre-Stage-12 audit is done** (`docs/pre_stage12_codex_audit.md`, 1 CRITICAL /
+2 HIGH / 8 MEDIUM / 6 LOW; **no direct evidence that any frozen numerical result is
+invalid**). Its reproducibility/provenance blockers were remediated on 2026-08-26 —
+closure table at `docs/pre_stage12_audit_remediation.md`:
+- **C1 RESOLVED** — the exact Stage 06-10 producers were recovered verbatim from the
+  session transcripts into `production/` (39 drivers). Not reimplemented from memory.
+- **H1 PARTIALLY RESOLVED** — `provenance/frozen_artifacts_pre_stage12.tsv` (393 rows,
+  stages 04-11b) + `.sha256` + as-built environment exports are committed. **Immutable
+  external storage is still not provisioned** and remains the open half.
+- **H2 RESOLVED** — `subclone.level2_state()` validates program names against the frozen
+  `config.LEVEL2_PROGRAMS`; the weak-discriminator disclosure is binding on Stage 12.
+- **No scientific result changed**; nothing under `results/` was written; all 393 hashes
+  verify; 566 tests pass.
+Three MEDIUM and three LOW items are deliberately left `OPEN` as after-Stage-12 work
+(depth-binning consolidation, `total_counts` renaming, Stage-11 OLS rank diagnostics,
+artifact quarantine) because each would edit code that produced frozen results.
 
 
 **Stages 01 through 11 are run, accepted and FROZEN, and the supplemental 08c coverage

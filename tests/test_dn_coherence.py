@@ -217,10 +217,19 @@ def test_cnv_state_is_not_evaluable_and_no_not_supported_constant_exists():
 
 
 def test_module_never_calls_transcriptional_coherence_a_subclone():
+    """No emitted *label* may say "subclone" unless it is a CNV state.
+
+    Checks string constants only. A callable's or class's ``repr`` carries the module
+    path ``mm_escape.subclone``, which would make this pass or fail on where the code
+    lives rather than on what it claims — the opposite of the invariant.
+    """
     for name in SC.__all__:
         if name.startswith("CNV"):
             continue
-        assert "SUBCLONE" not in str(getattr(SC, name)).upper() or name.startswith("CNV")
+        value = getattr(SC, name)
+        if not isinstance(value, str):
+            continue
+        assert "SUBCLONE" not in value.upper(), f"{name} = {value!r}"
 
 
 # --------------------------------------------------------------- depth-matched sampling

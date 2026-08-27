@@ -19,6 +19,8 @@ from __future__ import annotations
 import numpy as np
 import scipy.sparse as sp
 
+from . import config
+
 __all__ = [
     "ANTIGEN_FEATURES", "MIN_GROUP_CELLS", "MIN_PATIENT_CELLS", "N_DEPTH_BINS",
     "MAX_DEPTH_BINS", "adaptive_depth_bins",
@@ -29,7 +31,7 @@ __all__ = [
     "STRUCTURE_SUPPORTED", "STRUCTURE_NOT_SUPPORTED", "STRUCTURE_NOT_EVALUABLE",
     "STATE_SUPPORTED", "STATE_NOT_SUPPORTED", "STATE_NOT_EVALUABLE",
     "CNV_SUBCLONE_SUPPORTED", "level1_structure_state", "level2_state",
-    "licensed_language",
+    "licensed_language", "UnknownProgramError", "validate_program_names",
 ]
 
 #: Never features. Labels only.
@@ -225,6 +227,37 @@ def level1_structure_state(coherence_state_value):
             NOT_EVALUABLE: STRUCTURE_NOT_EVALUABLE}[coherence_state_value]
 
 
+class UnknownProgramError(ValueError):
+    """A program name that is not in the frozen Level-2 predeclaration."""
+
+
+def validate_program_names(names):
+    """Reject any program not in the frozen ``config.LEVEL2_PROGRAMS`` predeclaration.
+
+    The Level-2 rule was frozen over exactly seven programs (six state programs plus the
+    pre-registered five-gene gamma-secretase set). A program invented *after* seeing
+    results must have no route into a patient state call, and "the caller only passes
+    good names" is a convention, not a guarantee. This is the guarantee.
+
+    Raises
+    ------
+    UnknownProgramError
+        If any name is outside the frozen predeclaration. Raising is deliberate: a
+        silently ignored unknown program would turn a post-hoc program into a
+        *reduced* hit set and quietly change a state call.
+    """
+    allowed = set(config.LEVEL2_PROGRAMS)
+    seen = list(names)
+    unknown = sorted({str(n) for n in seen} - allowed)
+    if unknown:
+        raise UnknownProgramError(
+            "program(s) not in the frozen Stage-10 Level-2 predeclaration "
+            f"config.LEVEL2_PROGRAMS: {unknown}. Frozen set: {sorted(allowed)}. "
+            "The frozen rule is not retuned and no program may be added after the fact."
+        )
+    return seen
+
+
 def level2_state(evaluable, reproducible_program_hits, repeated_sample_status=None):
     """Level 2 from PROGRAM evidence only.
 
@@ -232,12 +265,24 @@ def level2_state(evaluable, reproducible_program_hits, repeated_sample_status=No
     denominators *and* run the same direction in this patient. Neighbourhood enrichment
     and Moran's I are Level-1 quantities and cannot reach this function at all — which is
     the point: Level 2 may never be emitted from spatial organization.
+
+    Every name is validated against the frozen ``config.LEVEL2_PROGRAMS`` predeclaration
+    and an unknown name raises :class:`UnknownProgramError`. That is a guard against a
+    post-hoc program entering a patient state call, not a change to the rule.
+
+    **The per-patient Level-2 state is a weak compatibility label, not a discriminative
+    risk classifier. The cohort-level phenotype is the scientifically informative
+    result.** 26 of 27 evaluable patients satisfy this rule, so `DN_STATE_SUPPORTED`
+    means *compatible with the cohort-level DN-associated program* and must never be
+    read as strong patient-specific evidence of a distinct escape state. The rule was
+    **not** retuned after that was observed.
     """
+    hits = validate_program_names(reproducible_program_hits)
     if not evaluable:
         return STATE_NOT_EVALUABLE
     if repeated_sample_status == "discordant":
         return STATE_NOT_SUPPORTED
-    return STATE_SUPPORTED if list(reproducible_program_hits) else STATE_NOT_SUPPORTED
+    return STATE_SUPPORTED if hits else STATE_NOT_SUPPORTED
 
 
 def licensed_language(level1, level2, level3=CNV_NOT_EVALUABLE):

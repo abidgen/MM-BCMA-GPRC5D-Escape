@@ -1,10 +1,14 @@
-# Stage results — run output for stages 01 through 05b
+# Stage results — run output for stages 01 through 11b (incl. 05b, 08c, 09b)
 
 Split out of `CLAUDE.md` on 2026-08-24. `CLAUDE.md` keeps, per completed stage, a
 short block saying what it produced and what binds downstream; this file is the full
 record.
 
-**The `results/*.csv` files are the source of truth, not the tables reproduced here.**
+**The frozen `results/` artifacts outrank the tables reproduced here — but only as
+authenticated by the committed freeze manifest `provenance/frozen_artifacts_pre_stage12.tsv`.**
+`results/` is gitignored, so an on-disk file is durable evidence only when its SHA256
+matches that manifest; the committed producers under `production/` and `notebooks/` are
+what define how each artifact was derived.
 Where a table below duplicates a committed artifact the path is named; if the two ever
 disagree, the CSV is right and this file is stale.
 

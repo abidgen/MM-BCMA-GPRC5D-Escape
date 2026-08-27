@@ -1,4 +1,14 @@
 # Multiple Myeloma Dual-Antigen (BCMA/GPRC5D) Coverage & Escape Risk
+
+> **Naming note (2026-08-26).** Several stage headings in this document once used
+> planning-era notebook names. They now match the files on disk:
+> `07_malignant_plasma`, `08_dual_antigen_escape`, `09_bulk_validation`,
+> `10_dn_coherence`, `11_immune_context`, plus the lettered arms `05b`, `08c`,
+> `09b`, `11b`. Stage 11 was renamed from `11_cellchat_liana` because a
+> full-interactome screen was deliberately not run.
+>
+> The **producers** of the frozen Stage 06-10 tables are committed under
+> `production/`; `CLAUDE.md` remains current where this document disagrees.
 ## Pipeline Walkthrough (Python rebuild)
 
 **Objective:** For each multiple myeloma patient in GSE223060, quantify the fraction
@@ -320,7 +330,7 @@ mechanically pushes the others down) and naive tests on them are anticonservativ
 
 ---
 
-## Stage 07 — Malignant plasma cell identification (`notebooks/07_malignant_calling.ipynb`; env: `mm-core`)
+## Stage 07 — Malignant plasma cell identification (`notebooks/07_malignant_plasma.ipynb`; env: `mm-core`)
 
 Subset to plasma cell clusters. Clustering alone can't separate malignant from residual
 normal plasma cells — clonality can. Score kappa (`IGKC`) vs. lambda (`IGLC1-7`)
@@ -371,7 +381,7 @@ nothing.
 
 ---
 
-## Stage 08 — Antigen scoring + dual-antigen escape fraction (`notebooks/08_antigen_escape_fraction.ipynb`; env: `mm-core`)
+## Stage 08 — Antigen scoring + dual-antigen escape fraction (`notebooks/08_dual_antigen_escape.ipynb`; env: `mm-core`)
 
 Per malignant cell, positivity for BCMA (`TNFRSF17`), GPRC5D, and backup candidates
 (`SLAMF7`, `FCRL5`) — using the empirical ambient-noise-floor threshold derived from
@@ -527,7 +537,7 @@ so plainly.
 
 ---
 
-## Stage 09 — Escape robustness (`notebooks/09_escape_robustness.ipynb`; env: `mm-core`)
+## Stage 09 — Escape robustness (`notebooks/09_bulk_validation.ipynb`; env: `mm-core`)
 
 Everything in this stage exists to answer one question: *how do you know your escape
 fractions are real?*
@@ -581,7 +591,7 @@ with the co-negativity enrichment test.
 
 ---
 
-## Stage 10 — Escape subclone + phenotype (`notebooks/10_escape_subclone_phenotype.ipynb`; env: `mm-core`)
+## Stage 10 — Escape subclone + phenotype (`notebooks/10_dn_coherence.ipynb`; env: `mm-core`)
 
 The stage carrying the project's actual scientific payoff rather than another robustness
 check.
@@ -651,7 +661,7 @@ patients across ~5 classes an association test would be underpowered.
 
 ---
 
-## Stage 11 — Cell-cell communication (`notebooks/11_cellchat_liana.ipynb`; env: `mm-communication`)
+## Stage 11 — Exploratory immune context (`notebooks/11_immune_context.ipynb`; env: `mm-communication`)
 
 Runs LIANA+ using the CellChat-algorithm method specifically (LIANA+ natively
 reimplements it), or the full consensus rank-aggregate across

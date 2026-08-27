@@ -229,15 +229,24 @@ python scripts/03_build_manifest.py raw/samples   # build sample -> file-path ma
 | 05 | `notebooks/05_integration_clustering.ipynb` | `mm-core` | `results/05_integration/` |
 | 05b | `notebooks/05b_integration_benchmark.ipynb` | `mm-integration` | `results/05b_benchmark/` |
 | 06 | `notebooks/06_annotation.ipynb` | `mm-annotation` | `results/06_annotation/` |
-| 07 | `notebooks/07_malignant_calling.ipynb` | `mm-core` | `results/07_malignant/` |
-| 08 | `notebooks/08_antigen_escape_fraction.ipynb` | `mm-core` | `results/08_escape_fraction/` |
-| 09 | `notebooks/09_escape_robustness.ipynb` | `mm-core` | `results/09_robustness/` |
-| 10 | `notebooks/10_escape_subclone_phenotype.ipynb` | `mm-core` | `results/10_subclone/` |
-| 11 | `notebooks/11_cellchat_liana.ipynb` | `mm-communication` | `results/11_communication/` |
+| 07 | `notebooks/07_malignant_plasma.ipynb` | `mm-core` | `results/07_malignant_plasma/` |
+| 08 | `notebooks/08_dual_antigen_escape.ipynb` | `mm-core` | `results/08_dual_antigen_escape/` |
+| 08c | `notebooks/08c_multi_antigen_coverage.ipynb` | `mm-core` | `results/08_dual_antigen_escape/multi_antigen_coverage/` |
+| 09 | `notebooks/09_bulk_validation.ipynb` | `mm-core` | `results/09_bulk_validation/` |
+| 09b | `notebooks/09b_risk_tiers.ipynb` | `mm-core` | `results/08_dual_antigen_escape/risk_tier_provisional/` |
+| 10 | `notebooks/10_dn_coherence.ipynb` | `mm-core` | `results/10_dn_coherence/` |
+| 11 | `notebooks/11_immune_context.ipynb` | `mm-communication` | `results/11_immune_context/` |
+| 11b | `notebooks/11b_liana_verification.ipynb` | `mm-communication` | `results/11_immune_context/liana_verification/` |
 | 12 | `notebooks/12_decision_packet.ipynb` | `mm-core` | `results/12_decision_packet/` |
 
-Number order is execution order throughout — 04 → 05 → 06 → 07 → 08 → 09 → 10 → 11
-→ 12, no exceptions.
+Number order is execution order throughout — 04 → 05 → 05b → 06 → 07 → 08 → 08c →
+09 → 09b → 10 → 11 → 11b → 12, no exceptions. Lettered stages (`05b`, `08c`, `09b`,
+`11b`) are side-arms feeding the numbered stage they attach to.
+
+The **producers** of the frozen Stage 06–10 tables are committed under `production/`
+(recovered verbatim from the session transcripts, 2026-08-26); the notebooks above are
+the narrative reports over those tables. See `production/README.md` and
+`provenance/README.md`.
 
 A planned Phase 2 independently re-runs the same shape (own `phase2_NN_*` numbered
 notebooks/results, never mixed with the numbers above) against a second, external
