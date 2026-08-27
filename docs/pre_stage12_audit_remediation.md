@@ -82,3 +82,15 @@ an additional scoring axis.
 **Recommendation: READY FOR RE-AUDIT**, with the two disclosed residual caveats (external
 immutable storage not yet provisioned; the recovered drivers are transcript-derived and
 validated by a byte-identical control plus timing rather than by a hash of the originals).
+
+## 2026-08-26 non-blocking re-audit closure addendum
+
+This addendum closes only the three non-blocking findings in
+`docs/pre_stage12_codex_reaudit.md`. No scientific output, threshold, tier, patient state,
+frozen artifact, or analysis result was changed, and Stage 12 was not started.
+
+| Re-audit finding | Closure | Correction |
+|---|---|---|
+| **N1 — recovered-producer commit placeholders** | `RESOLVED` | Replaced all 197 `pending-commit(this-repair-pass)` values in `provenance/frozen_artifacts_pre_stage12.tsv` with `ea26a949c40bc070c1cf4983ea936252fa36d145`, the commit containing those recovered producers. `provenance/README.md` now distinguishes that repository commit from historical execution-time provenance and retains the missing-original-hash caveat. Artifact paths, sizes, hashes, dates, environments and reproducibility classes were not changed. |
+| **N2 — frozen Stage-10 DE mislabeled as pydeseq2 / `~ patient + group`** | `RESOLVED IN CURRENT DOCUMENTATION` | Current methods and environment documentation now state that frozen Stage-10 DE used depth-matched patient pseudobulks, paired patient-level DN-versus-comparator log-fold changes, two-sided Wilcoxon signed-rank tests, and BH correction. Patient remains the biological unit. pydeseq2 remains recorded as installed but unused for this result. The inaccurate historical label remains untouched in two frozen artifacts and their verbatim recovered producer; `provenance/README.md` records that fact explicitly. |
+| **Residual “CSVs are the source of truth” sentence** | `RESOLVED` | `mm_dual_antigen_escape_pipeline.md` now states that ignored/local outputs are authoritative only after matching the committed provenance manifest and are not durable provenance by themselves. |

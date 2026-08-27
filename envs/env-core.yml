@@ -18,7 +18,7 @@ dependencies:
   - leidenalg
   - python-igraph
   - celltypist
-  - pydeseq2            # stage 10 pseudobulk DE (patient as unit of replication)
+  - pydeseq2            # installed; not used for the frozen Stage-10 DE result
   - pandas
   - numpy
   - scipy

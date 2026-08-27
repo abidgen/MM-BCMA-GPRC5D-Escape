@@ -30,10 +30,14 @@ already during the R build. For exact implementation read `src/mm_escape/`; for
 current execution state read `RESUME_HERE.md`; for superseded positions and how the
 plan evolved read `docs/decisions-archive.md`.
 
-**Where the numbers come from.** Run output for stages 01-05b is in
-`docs/stage-results.md` and the `results/*.csv` files it points at — figures quoted below
-are narrative context, the CSVs are the source of truth. Dataset facts (file-naming
-quirks, the two Cell Ranger references, the patient mapping) are in
+**Where the numbers come from.** Run output for stages 01-05b is described in
+`docs/stage-results.md` and stored in the `results/*.csv` files it points at. Frozen
+scientific outputs are local or externally archived artifacts authenticated by the
+committed pre-Stage-12 provenance manifest; an ignored/local CSV alone is not durable
+provenance and is authoritative only when its hash matches that manifest. Committed
+production code and provenance metadata document how those artifacts were generated and
+verified. Dataset facts (file-naming quirks, the two Cell Ranger references, the patient
+mapping) are in
 `docs/dataset-ground-truth.md`. This is a from-scratch Python rebuild: no R code carries
 over, all data-format knowledge does, and the R build is preserved in git under the
 `r-build-snapshot` tag.
@@ -635,12 +639,13 @@ Stage 08's co-negativity test: shallow cells are both likelier to read double-ne
 *and* to sit together in low-dimensional space, so an unconditioned enrichment test will
 see depth structure and report it as biology.
 
-**What else is different about the escape cells?** Pseudobulk differential expression
-(`pydeseq2`/`decoupler`) of double-negative vs. dual-positive malignant cells, with
-**patient as the unit of replication** — `sc-best-practices` is blunt that per-cell DE
+**What else is different about the escape cells?** Stage-10 differential expression used
+depth-matched patient pseudobulks. For each gene, paired patient-level DN-versus-comparator
+log-fold changes were tested with a two-sided Wilcoxon signed-rank test, followed by
+Benjamini–Hochberg correction. **Patient is the biological unit.** `decoupler` was used
+separately for pathway and TF activity. Per-cell DE
 tests treat cells as independent replicates and badly inflate the false discovery rate.
-Then pathway and TF activity via `decoupler` (Hallmark, PROGENy, CollecTRI), and program
-scores for MYC and OXPHOS alongside the Stage 06 programs — MYC because its activation is
+Program scores cover MYC and OXPHOS alongside the Stage 06 programs — MYC because its activation is
 a recognized myeloma progression event, which makes "is the escape population MYC-high?"
 a substantive question rather than a generic one.
 

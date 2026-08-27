@@ -62,7 +62,7 @@ dependencies:
   - python-igraph
   - celltypist
   - infercnvpy
-  - pydeseq2          # stage 10 pseudobulk DE (patient as unit of replication)
+  - pydeseq2          # installed in mm-core; not used for the frozen Stage-10 DE result
   - decoupler         # stage 10 pathway/TF activity (Hallmark/PROGENy/CollecTRI)
   - pandas
   - numpy

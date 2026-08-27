@@ -1178,12 +1178,13 @@ rather than another robustness check.
   shallow cells are both more likely to be DN *and* to cluster together in
   low-dimensional space, so an unconditioned enrichment test sees depth structure and
   calls it biology.
-- **Phenotype of the escape cells.** Pseudobulk differential expression
-  (`pydeseq2`/`decoupler`) of double-negative vs. dual-positive malignant cells,
-  aggregated with **patient as the unit of replication** — `sc-best-practices` is
+- **Phenotype of the escape cells.** Stage-10 differential expression used depth-matched
+  patient pseudobulks. For each gene, paired patient-level DN-versus-comparator log-fold
+  changes were tested with a two-sided Wilcoxon signed-rank test, followed by
+  Benjamini–Hochberg correction. **Patient is the biological unit.** `decoupler` was used
+  separately for pathway and TF activity. `sc-best-practices` is
   explicit that per-cell DE tests treat cells as independent replicates and badly
-  inflate FDR. Then pathway/TF activity via `decoupler` (Hallmark, PROGENy,
-  CollecTRI).
+  inflate FDR. The `decoupler` resources are Hallmark, PROGENy and CollecTRI.
 - **Pre-registered hypothesis: the γ-secretase axis** (`NCSTN`, `PSEN1`, `APH1A`,
   `APH1B`, `PSENEN`). γ-secretase cleaves BCMA off the cell surface, and
   γ-secretase-inhibitor + BCMA CAR-T combinations are in active clinical development

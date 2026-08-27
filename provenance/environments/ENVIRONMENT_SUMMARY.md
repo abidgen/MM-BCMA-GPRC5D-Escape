@@ -44,7 +44,7 @@ It meets `mm-core` only on disk, through `.h5ad`/CSV files.
 | `celltypist` | `mm-core`/`mm-annotation` | 1.7.1 | stage 06 |
 | `harmonypy` | `mm-core` | 2.0.0 | stage 05 integration |
 | `infercnvpy` | `mm-core` | 0.6.1 | stage 07 CNV (rejected as NOT_EVALUABLE) |
-| `pydeseq2` | `mm-core` | 0.5.4 | stage 10 pseudobulk DE |
+| `pydeseq2` | `mm-core` | 0.5.4 | installed, but not used for the frozen Stage-10 DE result |
 | `decoupler` | `mm-core` | **2.2.0** | stage 10 Hallmark/PROGENy/CollecTRI |
 | `scib-metrics` | `mm-integration` | 0.6.0 | stage 05b benchmark |
 | `scvi-tools` | `mm-integration` | 1.5.0 | stage 05b scVI arms |
@@ -55,6 +55,13 @@ It meets `mm-core` only on disk, through `.h5ad`/CSV files.
 `decoupler` 2.x is an API rewrite (`dc.mt.*` / `dc.op.*`). Stage 10 was written against 2.2.0.
 Note the two environments carry **different** decoupler versions; the frozen Stage-10
 pathway results come from `mm-core`'s 2.2.0, never `mm-communication`'s 2.1.6.
+
+The frozen Stage-10 differential-expression producer is
+`production/stage10/s10e_pseudobulk_de_decoupler_tc.py`. It used depth-matched patient
+pseudobulks. For each gene, paired patient-level DN-versus-comparator log-fold changes
+were tested with a two-sided Wilcoxon signed-rank test, followed by Benjamini–Hochberg
+correction. **Patient is the biological unit.** `pydeseq2` was present in `mm-core` but
+was not called to generate the frozen Stage-10 DE result.
 
 ## Known environment trap (recorded by the Codex audit)
 

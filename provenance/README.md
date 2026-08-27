@@ -39,7 +39,7 @@ Every row carries:
 | `sha256` | content hash at freeze time |
 | `artifact_role` | what the file is (result table, checkpoint, frozen design document, figure, …) |
 | `producer_source_path` | the **committed** code that produced it (`production/…`, `notebooks/…`) |
-| `producer_code_commit` | the commit that carries that producer, or `pending-commit(this-repair-pass)` for newly recovered drivers |
+| `producer_code_commit` | the commit containing the producer implementation associated with that frozen artifact |
 | `frozen_date` | the date that stage was accepted/frozen |
 | `environment` | which conda environment ran it |
 | `reproducibility` | see below |
@@ -57,6 +57,30 @@ Every row carries:
 principle**, not a promise of bit-identical output. Harmony, Leiden, scVI and R packages
 can move with library and hardware versions; that is why `environments/` exists and why
 project-level seeds are fixed.
+
+For transcript-recovered Stage 06-10 support/production drivers added during remediation,
+`producer_code_commit` is commit
+`ea26a949c40bc070c1cf4983ea936252fa36d145`. This identifies the commit that first carries
+the recovered implementation in this repository; it does **not** claim that the producer
+existed in Git when the original analysis ran. The producers were recovered from Claude
+Code session-transcript heredocs. The byte-identical surviving Stage-07 control and the
+execution-time/artifact-mtime correspondence strongly support the recovery, but original
+per-file scratchpad hashes do not exist and historical identity is not cryptographically
+provable for every recovered file.
+
+### Historical Stage-10 design-label caveat
+
+The frozen `results/10_dn_coherence/pseudobulk_de_evaluability.csv` and frozen
+`results/10_dn_coherence/stage10_design.md` retain the historical label
+`~ patient + group`. The verbatim recovered producer retains the same string. That label
+describes the intended paired structure but does not name the statistic that actually
+generated `pseudobulk_de_results.csv`. The authoritative producer
+`production/stage10/s10e_pseudobulk_de_decoupler_tc.py` used depth-matched patient
+pseudobulks; for each gene, paired patient-level DN-versus-comparator log-fold changes
+were tested with a two-sided `scipy.stats.wilcoxon` signed-rank test, followed by
+Benjamini–Hochberg correction. Patient is the biological unit. `pydeseq2` was installed
+but was not used for this frozen result. The frozen files and recovered historical source
+are intentionally not rewritten to correct their historical label.
 
 ## Verifying the freeze locally
 
