@@ -169,8 +169,8 @@ composition and sensitivity, so the discordance has more than one possible cause
 
 ## Setup
 
-Five conda/mamba environments, split by actual dependency-conflict risk
-(see the main project document for the full reasoning):
+Six conda/mamba environment specifications; five environments built, split by actual
+dependency-conflict risk (see the main project document for the full reasoning):
 
 ```bash
 mamba env create -f envs/env-qc.yml            # data loading, QC, scDblFinder (via rpy2)
@@ -264,11 +264,14 @@ reasoning behind each stage.
 ```
 ├── mm_analysis_overview.md                # plain-language explanation of the approach
 ├── mm_dual_antigen_escape_pipeline.md     # pipeline walkthrough (narrative, not code)
-├── envs/                                  # five conda env specs, split by dependency risk
+├── docs/                                  # dataset ground truth, stage results, decisions archive, envs
+├── envs/                                  # six env specs, five built, split by dependency risk
 ├── src/mm_escape/                         # reusable/testable logic — importable, Codex-reviewable
 ├── tests/                                 # pytest suite; most of it runs without raw/
 ├── resources/                             # committed gene-space map + parsed GEO metadata
 ├── notebooks/                             # numbered 01-12, jupytext-paired (.ipynb gitignored)
+├── production/                            # recovered historical producers of the frozen stage 06-10 tables
+├── provenance/                            # frozen-artifact manifest + SHA256s + as-built env exports
 ├── scripts/                               # 01-03 acquisition — CLI fallback, wrapped by notebooks 01-03
 ├── raw/                                   # data (gitignored — regenerate via scripts/01)
 └── results/                               # numbered 04-12, matching notebooks 1:1 (gitignored)

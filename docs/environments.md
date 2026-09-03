@@ -156,7 +156,9 @@ from the yml. The two legitimate pip entries (`infercnvpy`, `decoupler`) live in
 so a rebuild reproduces them. If a pip install is unavoidable, rebuild the env
 afterwards rather than patching it.
 
-**Verified 2026-08-21 — all four envs import their key packages, both R bridges work:**
+**Verified 2026-08-21 — the four envs built at that date import their key packages, and
+both R bridges work.** `mm-integration` was built later for stage 05b and has no row
+here; no verification run is claimed for it.
 
 | env | verified |
 |---|---|

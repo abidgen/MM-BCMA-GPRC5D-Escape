@@ -461,6 +461,8 @@ nothing about stage 05's output changed as a result.
 | **2026-08-26, stages 01-11 complete** | **457 pass, 1 skip, 4 deselected, ~32 s** (`pytest -m "not slow"`, `mm-core`) |
 | **2026-08-26, + stage 08c coverage** | **488 pass, 1 skip, 4 deselected, ~33 s** |
 | **2026-08-26, + stage 11b LIANA arm** | **507 pass, 1 skip, 4 deselected, ~32 s** |
+| **2026-09-03, post-Stage-12, full suite** | **620 passed, 2 skipped, 6 warnings** (`pytest -q`, `mm-core`) |
+| **2026-09-03, post-Stage-12, not-slow** | **616 passed, 1 skipped, 5 deselected** (`pytest -m "not slow"`) |
 
 Gates: `conftest.requires_data` (needs `raw/`), `requires_s1` (Supplementary Table S1
 is a journal file, not part of the GEO deposit), `requires_r` (scDblFinder lives only

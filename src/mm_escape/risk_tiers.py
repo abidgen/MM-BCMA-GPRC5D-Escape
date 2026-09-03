@@ -1,4 +1,11 @@
-"""Final risk tiering — the frozen rule from `risk_tier_final/risk_tier_policy.md`.
+"""Provisional measurement tiering — the frozen Stage-09b rule.
+
+NAMING NOTE (documentation only, 2026-09-03). ``final_tier`` and the policy path
+`risk_tier_final/risk_tier_policy.md` are historical internal names, kept so the frozen
+producer under ``production/stage09b/`` runs unchanged; neither asserts finality. The
+user-facing term is "provisional measurement tier" and the output directory was renamed
+to ``results/08_dual_antigen_escape/risk_tier_provisional/``. No rule, threshold or
+patient membership changed with the rename.
 
 The whole design point: **`robust-high` means the high-DN conclusion survives not just the
 technical sensitivity analyses, but also the reasonable uncertainty over what numerical DN

@@ -1,12 +1,6 @@
 # Stage 12 — final synthesis / decision packet: DESIGN
 
-**Status: EXECUTED. Stage 12 ran against this design on 2026-08-27T07:13:56Z as
-`notebooks/12_final_synthesis.py`, writing `results/12_final_synthesis/`. The design
-below is preserved exactly as written before execution** (and is separately snapshotted,
-byte-for-byte, at `results/12_final_synthesis/stage12_design_snapshot.md`) — nothing in
-it was edited after the run to match the output. For the executed outcome, read
-`results/12_final_synthesis/stage12_summary.md`; the main project document's Stage 12
-block carries the condensed version.
+**Status: DESIGN ONLY. Stage 12 has not been executed and no notebook exists.**
 **Design date:** 2026-08-27
 **Design pinned to:** commit `5bbecbc`, tag lineage `pre-stage12-audit` → `pre-stage12-remediated`
 **Authority rule:** where historical planning text disagrees with the recovered production
@@ -14,9 +8,7 @@ code under `production/`, **the recovered implementation is authoritative.**
 
 Nothing in this pass modified a frozen result, threshold, tier, state or artifact. Every
 number below was re-derived from the frozen artifacts while writing this document, and all
-393 manifest hashes verified — and every constraint, stop condition and output shape
-declared below is exactly what the executed run produced, confirmed against
-`results/12_final_synthesis/` after the fact.
+393 manifest hashes verify.
 
 ---
 
@@ -889,7 +881,7 @@ a ceiling the WashU deposits cannot contain), which no method can recover.
 | 14 | 08c chronology reconciled | ✔ |
 | 15 | Plasma-mixing interpretation reconciled | ✔ |
 | 16 | No composite score anywhere in the design | ✔ and test-enforced |
-| 17 | Stage-12 notebook created | ✔ `notebooks/12_final_synthesis.py`, executed 2026-08-27 |
+| 17 | Stage-12 notebook created | ✘ **deliberately not yet** |
 
-**Design status: COMPLETE. Stage 12 was executed against this design on 2026-08-27 and
-Phase 1 is closed.** Outcome: `results/12_final_synthesis/stage12_summary.md`.
+**Design status: COMPLETE. Stage 12 is ready to be implemented against this design.
+It has not been executed.**
