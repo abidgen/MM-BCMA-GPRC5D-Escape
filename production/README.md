@@ -5,7 +5,7 @@ frozen artifact was regenerated, recomputed or altered.**
 
 ## Why this directory exists
 
-The pre-Stage-12 Codex audit (`docs/pre_stage12_codex_audit.md`) raised one CRITICAL
+The pre-Stage-12 Codex audit raised one CRITICAL
 finding, **C1**: substantial Stage 07–10 frozen outputs had no producer in the repository.
 The authoritative notebooks (`notebooks/07_*.py` … `notebooks/10_*.py`) are *reports* —
 they read the frozen tables and narrate them. The code that actually computed those
@@ -97,4 +97,4 @@ The scratchpad copies themselves are gone; the transcripts are the surviving rec
 byte-identical control above, the timestamp correspondence and the clean parse are strong
 evidence that the recovery is faithful, but they are evidence rather than a cryptographic
 guarantee — no hash of the original scratchpad files was ever taken. This is recorded as
-a residual caveat in `../docs/pre_stage12_audit_remediation.md` rather than papered over.
+a residual caveat in the audit remediation record rather than papered over.

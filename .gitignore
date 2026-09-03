@@ -141,3 +141,16 @@ Thumbs.db
 # --- Session scratch -----------------------------------------------------------
 # `claude --teleport <id>` handle, written per-session; not project source.
 session_id.txt
+
+# --- Working documents, untracked on purpose ------------------------------------
+# Removed from the index with `git rm --cached` (ad8d178, 1098e3a) and kept on disk.
+# Listed here so `git add .` cannot silently re-add them. Their last tracked
+# versions remain in history at 5bbecbc.
+CLAUDE.md
+RESUME_HERE.md
+docs/pre_stage12_codex_audit.md
+docs/pre_stage12_codex_reaudit.md
+docs/pre_stage12_audit_remediation.md
+# Never tracked; independent end-to-end process reconstructions.
+docs/project_process_claude.md
+docs/project_process_codex.md
