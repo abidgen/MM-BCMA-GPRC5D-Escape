@@ -65,15 +65,18 @@ clonal heterogeneity rather than acquired resistance.
     patient (not the cell) as the unit of replication and immune-cell abundance
     controlled as a confounder. Exploratory by design: n ≈ 41 patients against hundreds
     of ligand-receptor pairs does not support a confirmatory claim.
-11. Output per-patient **risk tiers** — robust-high / uncertain / robust-low, with
-    co-escape enrichment and escape-population coherence as separate columns — usable
-    for single- vs. dual- vs. sequential-target CAR-T strategy discussions. Not a rank
-    ordering: the confidence intervals overlap too much for ordinal positions to mean
-    anything.
+11. Synthesize everything upstream into a **six-axis per-patient evidence matrix** —
+    measurement robustness, DN structure, DN phenotype, genomic evidence, immune context
+    and multi-antigen coverage — kept as **separate columns, never a composite score**.
+    The provisional measurement tiers (robust-high / uncertain / robust-low) from stage 08
+    are one of those six axes, not folded together with the others: inspecting the joint
+    distribution across all six showed the measurement-robust and structurally-supported
+    patient sets to be **disjoint**, so no single categorical risk label or rank ordering
+    was produced — that decision, and the finding behind it, is itself part of the result.
 
-A planned Phase 2 independently re-runs the same pipeline on a second, external
-cohort (GSE117156) once Phase 1 is complete, to test whether the core finding
-replicates beyond this one dataset and sequencing technology.
+**Phase 1 is complete.** A planned Phase 2 independently re-runs the same pipeline on a
+second, external cohort (GSE117156), to test whether the core finding replicates beyond
+this one dataset and sequencing technology.
 
 ## Data
 
@@ -89,9 +92,9 @@ Only processed, *filtered* Cell Ranger output is publicly available for this ser
 Raw reads exist but are under controlled access on dbGaP (`phs000159` for the healthy
 donors, `phs000748` for MMRF bulk) rather than absent, and no unfiltered
 (pre-cell-calling) matrices were deposited anywhere — which rules out formal
-ambient-RNA correction (SoupX/DecontX) regardless. See `CLAUDE.md` for how that is
-handled instead. `scripts/01_download_data.sh` pulls and unpacks the data directly
-from GEO's FTP.
+ambient-RNA correction (SoupX/DecontX) regardless. See the main project document for how
+that is handled instead. `scripts/01_download_data.sh` pulls and unpacks the data
+directly from GEO's FTP.
 
 The 62 samples span three collection cohorts on **different 10x chemistries** (WashU
 cohort 1 on 3′ v2 with no dead-cell removal; MMRF and WashU cohort 2 on v3.3/v3.2 with
@@ -167,7 +170,7 @@ composition and sensitivity, so the discordance has more than one possible cause
 ## Setup
 
 Five conda/mamba environments, split by actual dependency-conflict risk
-(see `CLAUDE.md` for the full reasoning):
+(see the main project document for the full reasoning):
 
 ```bash
 mamba env create -f envs/env-qc.yml            # data loading, QC, scDblFinder (via rpy2)
@@ -237,7 +240,7 @@ python scripts/03_build_manifest.py raw/samples   # build sample -> file-path ma
 | 10 | `notebooks/10_dn_coherence.ipynb` | `mm-core` | `results/10_dn_coherence/` |
 | 11 | `notebooks/11_immune_context.ipynb` | `mm-communication` | `results/11_immune_context/` |
 | 11b | `notebooks/11b_liana_verification.ipynb` | `mm-communication` | `results/11_immune_context/liana_verification/` |
-| 12 | `notebooks/12_decision_packet.ipynb` | `mm-core` | `results/12_decision_packet/` |
+| 12 | `notebooks/12_final_synthesis.py` | `mm-core` | `results/12_final_synthesis/` |
 
 Number order is execution order throughout — 04 → 05 → 05b → 06 → 07 → 08 → 08c →
 09 → 09b → 10 → 11 → 11b → 12, no exceptions. Lettered stages (`05b`, `08c`, `09b`,
@@ -250,17 +253,15 @@ the narrative reports over those tables. See `production/README.md` and
 
 A planned Phase 2 independently re-runs the same shape (own `phase2_NN_*` numbered
 notebooks/results, never mixed with the numbers above) against a second, external
-cohort (GSE117156) once Phase 1 is complete. See `CLAUDE.md`.
+cohort (GSE117156) once Phase 1 is complete. See the main project document.
 
-See `CLAUDE.md` for the full technical plan and all confirmed data ground truth,
-and `mm_analysis_overview.md` for a plain-language walkthrough of the reasoning
-behind each stage.
+See the main project document for the full technical plan and all confirmed data
+ground truth, and `mm_analysis_overview.md` for a plain-language walkthrough of the
+reasoning behind each stage.
 
 ## Repo structure
 
 ```
-├── CLAUDE.md                              # full technical plan / decisions log
-├── RESUME_HERE.md                         # session state — read first when resuming
 ├── mm_analysis_overview.md                # plain-language explanation of the approach
 ├── mm_dual_antigen_escape_pipeline.md     # pipeline walkthrough (narrative, not code)
 ├── envs/                                  # five conda env specs, split by dependency risk
@@ -275,30 +276,39 @@ behind each stage.
 
 ## Status
 
-A prior R/Seurat build reached: data acquisition solved and verified (62/62 samples),
-QC/doublet-removal run on the full cohort, integration not yet run. **Now being
-rebuilt in Python from scratch** — that R build is preserved in git history under the
-`r-build-snapshot` tag and is not being ported; the dataset knowledge it earned
-carries forward via `CLAUDE.md`.
-
-Current state (2026-08-24): **stages 01-05 plus 05b written, executed and green.**
-The five conda environments are built and verified. `src/mm_escape/` holds `config.py`,
-`gene_space.py`, `io.py`, `qc.py`, `integration.py` and `benchmark.py`, covered by a
-155-test suite.
+**Phase 1 (stages 01-12, the full GSE223060 pipeline) is complete.** A prior R/Seurat
+build had reached data acquisition (62/62 samples) and cohort-wide QC/doublet-removal
+before integration; it was set aside and rebuilt in Python from scratch — that build is
+preserved in git history under the `r-build-snapshot` tag and was not ported, though the
+dataset knowledge it earned carries forward via the main project document.
 
 The full cohort — **62 samples, 204,040 pre-QC cells** — passes QC to **172,940 cells**
-and harmonizes to **32,991 genes** with every required marker present, in 30 Leiden
-clusters. Supplementary Table S1 has landed and closed the patient mapping at **41
-patients over 53 in-cohort samples**, matching the paper exactly. The integration step
-was benchmarked against six alternatives and the original choice retained. Stage 06
-(annotation) is the next thing to write.
+and harmonizes to **32,991 genes** with every required marker present, across 30 Leiden
+clusters, seven annotated cell classes, and a resolved patient mapping of **41 patients
+over 53 in-cohort samples** matching the source paper exactly. From there: malignant
+plasma cells identified by light-chain/V-gene clonal evidence (32 patients, 21,906 cells
+in the primary denominator); BCMA/GPRC5D antigen scoring and the dual-antigen escape
+fraction (median 0.335, range 0.017-0.783), bounded by a threshold-sensitivity band,
+depth regressions, bootstrap intervals and a truncate-at-10k censoring check rather than
+reported as a bare point estimate; matched-bulk and normal-marrow validation; a
+three-level test for whether double-negative cells are structured, phenotypically
+distinct, or genomically distinct (4 of 32 patients show non-random structure; a
+cohort-level but weakly patient-discriminative transcriptional phenotype; genomic
+subclone evidence not evaluable for any patient); an exploratory, ultimately negative
+look at the immune microenvironment; a seven-target multi-antigen coverage comparison;
+and a final synthesis that assembled all of it into a six-axis per-patient evidence
+matrix rather than a risk ranking, because the axes turned out to disagree with each
+other in a way that made a single score dishonest. **507+ tests pass** across the suite
+built alongside the pipeline (`pytest -m "not slow"`, `mm-core`).
 
-Two data-integrity findings are already baked in. The cross-reference gene join is on
-**reconstructed Ensembl IDs**, not symbols, which recovers 32,991 genes against 22,164
-and prevents silent mis-pairing (`TBCE` is a *different* annotation entry in each
-build). And `56203_1`, long excluded as an incompatible reference missing BCMA, is
-actually a normal sample whose gene file was truncated mid-write; it is repaired on
-read behind an assertion and retained.
+Two data-integrity findings from early in the project are baked into every stage after
+them. The cross-reference gene join is on **reconstructed Ensembl IDs**, not symbols,
+which recovers 32,991 genes against 22,164 and prevents silent mis-pairing (`TBCE` is a
+*different* annotation entry in each build). And `56203_1`, long excluded as an
+incompatible reference missing BCMA, is actually a normal sample whose gene file was
+truncated mid-write; it is repaired on read behind an assertion and retained.
 
-See `RESUME_HERE.md` for exact session state and `CLAUDE.md` for full technical
-context, all confirmed data-format gotchas, and the settled architecture decisions.
+**Phase 2** (independent validation on GSE117156) is the only work that remains — see
+the main project document's Phase 2 section for scope and the explicit no-merge
+constraint. See that document for the full technical context, all confirmed data-format
+gotchas, the settled architecture decisions, and the complete Stage-12 outcome.

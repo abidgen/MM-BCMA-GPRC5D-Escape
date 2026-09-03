@@ -40,7 +40,8 @@
 #
 # **So marker coverage is a veto.** A class whose assigned cells do not express that
 # class's markers is rejected regardless of concordance. `MARKER_COVERAGE_MIN = 0.30`
-# was recorded in `CLAUDE.md` before any coverage number was computed, for the same
+# was recorded in the main project document before any coverage number was computed, for
+# the same
 # reason the F1 bars were.
 #
 # ## What the plasma-cell boundary needs
@@ -94,7 +95,8 @@ print("coverage ", config.MARKER_COVERAGE_MIN, "(declared before any result)")
 
 # %%
 # Stage 06 ran twice. v1 is preserved at `results/06_annotation_v1/` and was NOT
-# accepted — see CLAUDE.md and docs/decisions-archive.md. v2 revises the manual
+# accepted — see the main project document and docs/decisions-archive.md. v2 revises the
+# manual
 # reference and adds the lineage-exclusivity veto; the acceptance thresholds are
 # unchanged.
 #

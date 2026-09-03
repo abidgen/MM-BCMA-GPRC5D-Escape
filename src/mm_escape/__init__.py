@@ -4,7 +4,7 @@ mm_escape — MM dual-antigen (BCMA/GPRC5D) escape risk analysis.
 An importable library, NOT a pipeline sequence: modules are named by function and are
 never numbered, because several (plotting, robustness, gene_space) are used by more
 than one stage. The numbered things are notebooks and their `results/NN_*/` output
-directories, which match 1:1. See CLAUDE.md.
+directories, which match 1:1. See the main project document.
 
 Submodules are imported lazily — `gene_space` needs only pandas, while `qc` pulls the
 rpy2/scDblFinder bridge and `communication` pulls LIANA+, and those live in different

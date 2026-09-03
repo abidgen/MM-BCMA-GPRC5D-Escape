@@ -1,8 +1,8 @@
 # Stage results — run output for stages 01 through 11b (incl. 05b, 08c, 09b)
 
-Split out of `CLAUDE.md` on 2026-08-24. `CLAUDE.md` keeps, per completed stage, a
-short block saying what it produced and what binds downstream; this file is the full
-record.
+Split out of the main project document on 2026-08-24. That document keeps, per completed
+stage, a short block saying what it produced and what binds downstream; this file is the
+full record.
 
 **The frozen `results/` artifacts outrank the tables reproduced here — but only as
 authenticated by the committed freeze manifest `provenance/frozen_artifacts_pre_stage12.tsv`.**
@@ -12,7 +12,8 @@ what define how each artifact was derived.
 Where a table below duplicates a committed artifact the path is named; if the two ever
 disagree, the CSV is right and this file is stale.
 
-**Corrected 2026-08-24 — median genes/cell.** Earlier revisions of `CLAUDE.md` quoted
+**Corrected 2026-08-24 — median genes/cell.** Earlier revisions of the main project
+document quoted
 "~2,044 median genes/cell" throughout. That figure came from the **R build** (61
 samples, 181,336 cells, fixed thresholds) and was carried forward into the Python
 rebuild without re-deriving it. Recomputed from
@@ -421,8 +422,8 @@ subclustering is per-patient un-integrated.
 
 ## Module validation logs
 
-One-time verification records moved here from the `CLAUDE.md` status section on
-2026-08-24. Not standing instructions.
+One-time verification records moved here from the main project document's status section
+on 2026-08-24. Not standing instructions.
 
 **`io.py` — validated against the real files (2026-08-24).** All **62** samples load in
 ~2 s; the four-sample failure-mode set (`MMRF_1695` = 33538 build, `27522_1` = 33694
@@ -470,10 +471,10 @@ two full-cohort passes.
 
 ## Stage 06 — annotation: full methodology and revision history
 
-Moved out of `CLAUDE.md` 2026-08-25 when stage 06 was frozen. This is the record of
-*how* the accepted C2d labels were produced and why three revisions were needed; the
-rules that still bind downstream work stay in `CLAUDE.md`. **No rule was changed in
-the move.**
+Moved out of the main project document 2026-08-25 when stage 06 was frozen. This is the
+record of *how* the accepted C2d labels were produced and why three revisions were
+needed; the rules that still bind downstream work stay in that document. **No rule was
+changed in the move.**
 
 **06 — Annotation** (`notebooks/06_annotation.ipynb`, `src/mm_escape/annotation.py`;
 env: **`mm-annotation`**). Follows `sc-best-practices.org`'s annotation chapter.
@@ -898,7 +899,7 @@ Level-3 **32 not evaluable**.
 
 ## Stage 11 — exploratory immune context: RUN, ACCEPTED and FROZEN (2026-08-26)
 
-Full frozen record in `CLAUDE.md`; design and its three dated amendments in
+Full frozen record in the main project document; design and its three dated amendments in
 `results/11_immune_context/stage11_design.md`; narrative in `stage11_immune_summary.md`.
 This section carries the run output.
 
@@ -1008,7 +1009,7 @@ than averaging per-cell rates, because a mean would weight a 300-UMI WashU cell 
 
 ## Stage 08c — supplemental multi-antigen coverage: COMPLETE / ACCEPTED / FROZEN (2026-08-26)
 
-Full frozen record in `CLAUDE.md`; design in
+Full frozen record in the main project document; design in
 `results/08_dual_antigen_escape/multi_antigen_coverage/multi_antigen_design.md`; narrative in
 `multi_antigen_coverage_summary.md`. This section carries the run output.
 
@@ -1260,3 +1261,22 @@ route and adds one new observation: an unrestricted LR resource reintroduces an
 antigen-circular interaction and ranks it first. **No patient tier or state changed; no
 LIANA-specific classifier exists.** `tests/test_liana_verification.py` — 18 tests (A–J),
 including digest checks on five frozen state files.
+
+---
+
+## Stage 12 — final synthesis: RUN, COMPLETE (2026-08-27)
+
+This file's scope is deliberately stages 01 through 11b, per its title, and its content
+above is unchanged by what follows. **Stage 12 subsequently consumed every result
+recorded in this file** — 29 frozen artifacts, hash-verified against
+`provenance/frozen_artifacts_pre_stage12.tsv` before use — and closed Phase 1. It added
+no new statistical test, fitted no model, and changed nothing recorded above. Full
+outcome: `results/12_final_synthesis/stage12_summary.md`; design it executed against:
+`docs/stage12_design.md`; condensed record: the main project document's Stage 12 block.
+
+Headline: observed transcript-level BCMA/GPRC5D double-negativity is common at baseline
+(median 0.335 across 32 patients), but is dominated by measurement limitations rather
+than demonstrable biology, and the measurement-robust, structurally-supported and
+phenotype-supported patient sets are disjoint — no patient is convergent across all
+three. Stage 12 therefore produced a six-axis per-patient evidence matrix rather than a
+risk tier or ranking, which is itself part of the result.

@@ -1,34 +1,39 @@
 # Multiple Myeloma Dual-Antigen (BCMA/GPRC5D) Coverage & Escape Risk
 
-> **Naming note (2026-08-26).** Several stage headings in this document once used
-> planning-era notebook names. They now match the files on disk:
+> **Naming note (updated for Stage 12's completion).** Several stage headings in this
+> document once used planning-era notebook names. They now match the files on disk:
 > `07_malignant_plasma`, `08_dual_antigen_escape`, `09_bulk_validation`,
 > `10_dn_coherence`, `11_immune_context`, plus the lettered arms `05b`, `08c`,
-> `09b`, `11b`. Stage 11 was renamed from `11_cellchat_liana` because a
-> full-interactome screen was deliberately not run.
+> `09b`, `11b`, and finally `12_final_synthesis` — renamed from the planning-era
+> "decision packet" for the same reason Stage 11 was renamed from `11_cellchat_liana`:
+> the executed stage turned out narrower and more disciplined than the original name
+> implied. **Phase 1 (stages 01-12) is complete as of 2026-08-27.**
 >
 > The **producers** of the frozen Stage 06-10 tables are committed under
-> `production/`; `CLAUDE.md` remains current where this document disagrees.
+> `production/`; the main project document remains current where this one disagrees.
 ## Pipeline Walkthrough (Python rebuild)
 
 **Objective:** For each multiple myeloma patient in GSE223060, quantify the fraction
 of malignant plasma cells that would evade BOTH a BCMA-directed and a
 GPRC5D-directed CAR-T/TCE, then relate that "dual-antigen escape fraction" to the
 immune microenvironment via LIANA+ (CellChat's algorithm, natively reimplemented in
-Python). Output is a per-patient **risk-tier table** — robust-high / uncertain /
-robust-low, with co-escape enrichment, incremental coverage gain and DN coherence as
-separate columns — usable for a single- vs. dual- vs. sequential-target CAR-T strategy
-discussion. Deliberately not a rank ordering: the confidence intervals overlap too
-heavily for ordinal positions to carry meaning (see Stage 12).
+Python), and lay out the resulting evidence for a single- vs. dual- vs.
+sequential-target CAR-T strategy discussion. **The output is not a per-patient
+risk-tier ranking** — that was the original plan, and Stage 12 explicitly declined it
+once the frozen evidence was assembled, because the patients who looked strongest on
+measurement robustness and the patients who looked strongest on structural evidence
+turned out to be disjoint sets. The actual output is a **six-axis per-patient evidence
+matrix** (measurement, structure, phenotype, genomic, immune, coverage) kept as separate
+columns, plus a claim ladder stating exactly what is and is not supported. See Stage 12
+below for the full reasoning.
 
 **This document is a narrative walkthrough of the pipeline's logic and reasoning,
 not a specification.** It answers *"what does the pipeline do, and why is it built
 that way"*. It deliberately does not restate thresholds, gene lists, resampling
-schemes or pre-declared decision rules — those live in `CLAUDE.md`, which is
-authoritative, and duplicating them here is exactly what made this file go stale once
+schemes or pre-declared decision rules — those live in the main project document, which
+is authoritative, and duplicating them here is exactly what made this file go stale once
 already during the R build. For exact implementation read `src/mm_escape/`; for
-current execution state read `RESUME_HERE.md`; for superseded positions and how the
-plan evolved read `docs/decisions-archive.md`.
+superseded positions and how the plan evolved read `docs/decisions-archive.md`.
 
 **Where the numbers come from.** Run output for stages 01-05b is described in
 `docs/stage-results.md` and stored in the `results/*.csv` files it points at. Frozen
@@ -311,10 +316,10 @@ biologically wrong.
 "pick the best" quietly becomes "justify whichever looked tidier". The choice is made
 **per class**, not once for the whole stage — the methods are expected to fail on
 *different* classes, so a single verdict would throw away good labels to punish an
-unrelated weakness. The per-class bars are in `CLAUDE.md`; the outcome and its numbers go
-to `results/06_annotation/annotation_decision.md`. Everything downstream then reads one
-column, `cell_type`, never needing to know which method produced it — which is what makes
-the comparison reversible later.
+unrelated weakness. The per-class bars are in the main project document; the outcome and
+its numbers go to `results/06_annotation/annotation_decision.md`. Everything downstream
+then reads one column, `cell_type`, never needing to know which method produced it —
+which is what makes the comparison reversible later.
 
 **Identity and state are kept as separate axes.** A cell has one identity but can be
 running several programs at once, so cell cycle, interferon response, antigen
@@ -367,9 +372,9 @@ it isn't something to note and move past.
 calls there is no reason to throw the disagreements away, so cells carry a confidence
 tier instead of a boolean, and Stage 08's headline result is re-run on the
 highest-confidence cells alone as a sensitivity check — a much stronger statement than
-the agreement rate by itself. The tier definitions are in `CLAUDE.md`; the one that
-matters conceptually is that CNV being *not evaluable* is not the same thing as CNV being
-negative.
+the agreement rate by itself. The tier definitions are in the main project document; the
+one that matters conceptually is that CNV being *not evaluable* is not the same thing as
+CNV being negative.
 
 **The normal bone marrow samples become a negative control.** `BM2/4/5/6` and the `ND_*`
 samples get run through the identical calling logic. (That these eight are genuinely
@@ -420,8 +425,8 @@ trustworthy, and the writeup has to say so.
 So the stage reports a **range, not a number**. Four checks do the bounding — a
 threshold sensitivity band, a depth-regression falsification test, an
 expression-matched false-negative floor, and per-patient bootstrap intervals; the
-specifications are in `CLAUDE.md`. Two of them have reasoning that isn't obvious from
-the specification.
+specifications are in the main project document. Two of them have reasoning that isn't
+obvious from the specification.
 
 **Why the minimum cell count is not a round number.** Cell counts vary about fifteen-fold
 across this cohort, so some patients simply cannot support the claim. At n = 50 malignant
@@ -695,50 +700,63 @@ if ignored, so it isn't treated as optional polish.
 
 ---
 
-## Stage 12 — Final decision packet (`notebooks/12_decision_packet.ipynb`; env: `mm-core`)
+## Stage 12 — Final synthesis (`notebooks/12_final_synthesis.py`; env: `mm-core`; output `results/12_final_synthesis/`)
 
-The final stage, assembling everything upstream of it into something a target-strategy
-discussion can actually use.
+**RUN, COMPLETE (2026-08-27T07:13:56Z, commit `5bbecbc`).** The final stage, assembling
+everything upstream of it — 29 frozen artifacts, hash-verified before use — into a
+synthesis a target-strategy discussion can actually use. It is deliberately
+**synthesis only**: no new statistical test, no fitted model, no new threshold, no score.
+Every number it reports already existed in a frozen artifact.
 
-**Risk tiers, not a ranking.** Patients get **robust high escape** / **uncertain** /
-**robust low escape**. "#1 patient 123, #2 patient 456" is false precision when the
-intervals overlap as heavily as these do, and ordinal positions are not stable
-quantities. The ranking-stability check from Stage 08 becomes what *earns* a tier rather
-than being the output itself, and the caterpillar plot with confidence intervals replaces
-the ranked bar chart — a bar chart asserts a precision this metric doesn't have, and the
-CIs are part of the result rather than a footnote to it.
+**No risk tiers, and no ranking — a decision made after inspecting the evidence, not
+before.** The plan going in was "robust high escape / uncertain / robust low escape."
+Stage 12 built the full cross-tabulation of the frozen tier (08/09b), Level-1 structure
+and Level-2 phenotype axes first, and found only 5 of the 18 possible combinations
+occupied — with the four measurement-`robust-high` patients and the four
+Level-1-`SUPPORTED` patients forming **disjoint sets**. Any single categorical label over
+that structure would either relabel three existing columns with risk-sounding language
+that the genomic axis (all 32 patients `NOT_EVALUABLE`) cannot support, or merge cells
+arbitrarily, including a one-patient singleton. **The decision: no categorical patient
+label, no rank ordering, no composite score of any kind.**
 
-**The other four quantities join as separate columns, not a composite score:** the
-multi-antigen coverage matrix (is there a better target pair for this patient), the
-co-escape enrichment ratio (are the same cells losing both antigens), the DN-coherence
-level (is that population structured), and the bulk-validation correlation (does an
-orthogonal assay agree with the single-cell antigen levels). Keeping them separate is the
-point — a patient can be low on the escape fraction and high on co-escape enrichment with
-level-2 coherence, and that patient is more interesting than any bare ranking would ever
-show. Folding them into one number would need weights that don't exist and would hide the
-inputs a reader could otherwise disagree with.
+**What replaced it: a 32-row evidence matrix with six axes kept as separate columns** —
+measurement robustness (08/09b), DN structure (10 Level 1), DN phenotype (10 Level 2),
+genomic evidence (10 Level 3), immune context (11/11b), and multi-antigen coverage (08c)
+— plus deterministically generated interpretation text (never freeform prose) and a
+12-claim ladder stating exactly which claims the frozen evidence does and does not
+support. Keeping the axes separate is the point, and it is now a demonstrated one rather
+than a design preference: a patient can be strong on measurement and unremarkable on
+structure, or the reverse, and folding them into one number would have erased exactly
+that disagreement — which turned out to be the project's central Stage-12 finding.
 
 **Clinical annotation comes from S1**, which supplies ISS stage, treatment and
 time-to-progression per patient, plus disease stage for WashU cohort 1 only — MMRF and
 WashU 2 have no per-sample stage and it is not imputed. **S1 carries no cytogenetics**,
 so there is no karyotype column and Stage 10's TC class enters explicitly as a
-transcriptional proxy.
+transcriptional proxy, unchanged through to the final synthesis.
 
 **The bias-direction table** — ambient, dropout, malignant-call error, deposit UMI
-censoring, mRNA-vs-protein, each with its sign on the metric — is included rather than
-left implicit.
+censoring, mRNA-vs-protein, each with its sign on the metric — is included as one of the
+29 consumed inputs, feeding the uncertainty register rather than left implicit.
 
-**And the mRNA-versus-protein limitation is stated explicitly and mechanistically.**
-CAR-T binds surface protein; this analysis measures transcript. BCMA is actively shed
-from the surface by γ-secretase, and GPRC5D transcript correlates imperfectly with
-surface density. This is the first question a target-strategy audience will ask, so it
-gets answered in the deliverable rather than waited for. If a published CITE-seq or flow
-calibration exists for these two antigens, quantify against it; otherwise state it
-plainly.
+**The mRNA-versus-protein limitation is stated explicitly and mechanistically, not
+quantified.** CAR-T binds surface protein; this analysis measures transcript. BCMA is
+actively shed from the surface by γ-secretase, and GPRC5D transcript correlates
+imperfectly with surface density. No published CITE-seq/flow calibration for these two
+antigens was incorporated, so the limitation sits in the uncertainty register as a stated
+gap — this is the first question a target-strategy audience will ask, and it is answered
+directly rather than left for them to catch, but it is not resolved.
 
-**Decision rules are declared in advance** — which escape-fraction threshold makes a
-patient a poor dual-target candidate is fixed before the tiers are looked at, not fitted
-to them afterwards.
+**The headline result, verbatim from `results/12_final_synthesis/stage12_summary.md`:**
+observed transcript-level BCMA/GPRC5D double-negativity is common at baseline (median
+0.335 across 32 patients), but its magnitude is dominated by measurement limitations
+rather than demonstrable biology. Depth conditioning removes most apparent co-loss
+enrichment and most apparent DN structure; the pre-registered γ-secretase hypothesis is
+not supported; genomic subclone evidence is not evaluable for any patient; and neither
+immune composition nor ligand-receptor communication survives correction. No patient
+shows convergent measurement-robust, structurally-supported and phenotype-supported
+evidence, and the evidence axes are substantially discordant — which is reported as the
+result, not smoothed over into a single number.
 
 ---
 
@@ -751,5 +769,5 @@ MRD) as a second, independent cohort, testing whether the core finding replicate
 this one dataset and technology.
 
 Full reasoning, acquisition method, and the explicit no-merge constraint (MARS-seq vs.
-10x — a platform difference, not a correctable batch effect) are in `CLAUDE.md`'s Phase 2
-section, not duplicated here.
+10x — a platform difference, not a correctable batch effect) are in the main project
+document's Phase 2 section, not duplicated here.

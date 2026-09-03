@@ -1,7 +1,7 @@
 # Dataset ground truth — GSE223060 / GSE223061
 
-Split out of `CLAUDE.md` on 2026-08-24. `CLAUDE.md` keeps the short list of rules
-that bind code; this file is the evidence behind them — archive forensics, the
+Split out of the main project document on 2026-08-24. That document keeps the short list
+of rules that bind code; this file is the evidence behind them — archive forensics, the
 Ensembl-ID reconstruction, the GEO series metadata, the bulk inventory, and the
 Supplementary Table S1 patient mapping.
 
@@ -363,10 +363,10 @@ S1 sheet 2 reads:
     27522_4  Relapse-2   27522_5  Remission-2   27522_6  Relapse-3
     47491_1  SMM         47491_2  Primary       58408_1  SMM  -> 58408_2 Primary
 
-This confirms outright what the 2026-08-24 bulk/scRNA suffix argument had inferred,
-and **the longitudinal arm (S1-gated additions, `CLAUDE.md`) is now real rather than
-speculative**. It also explains the lone non-`_1` samples: `37692_2` and `57075_3`
-are later timepoints whose earlier draws were not deposited.
+This confirms outright what the 2026-08-24 bulk/scRNA suffix argument had inferred, and
+**the longitudinal arm (the S1-gated additions in the main project document) is now real
+rather than speculative**. It also explains the lone non-`_1` samples: `37692_2` and
+`57075_3` are later timepoints whose earlier draws were not deposited.
 
 **An earlier figure of 47 patients / 57 disease samples is wrong and is superseded:
 it counted the four `ND_*` samples as disease. SETTLED 2026-08-24 against the GEO
@@ -423,5 +423,5 @@ methodology" below for the mitigation actually used instead.
 - **GSE118900** (MGUS/SMM/NDMM/RRMM staging cohort) — real and open, but rejected
   as the Phase 2 validation dataset: zero healthy controls, only 597 cells across
   15 patients (as low as 7-24 per patient), too statistically thin for a per-cell
-  classification metric. `GSE117156` (see `CLAUDE.md`'s Phase 2 section) is
-  superior on every axis that matters here.
+  classification metric. `GSE117156` (see the main project document's Phase 2
+  section) is superior on every axis that matters here.

@@ -259,7 +259,7 @@ def test_c3c_stage09_bulk_enters_09b_only_as_report_only_context_after_tiers_exi
 
     The frozen driver builds every tier first (`RT.final_tier(ev)` over Stage-07/08
     evidence only), materialises the table, and *then* appends `s09_*` context columns.
-    This test pins that ordering, which is the invariant CLAUDE.md actually states:
+    This test pins that ordering, which is the invariant the project plan actually states:
     Stage 09 is interpretation context, not an additional scoring axis.
     """
     src = _read(PROD / "stage09b" / "s09b2_provisional_tiers.py")

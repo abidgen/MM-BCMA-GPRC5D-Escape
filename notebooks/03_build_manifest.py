@@ -22,7 +22,8 @@
 #
 # **The script remains the single source of truth.** This notebook *imports*
 # `build_manifest()` from it rather than re-implementing it, so the two cannot drift.
-# `CLAUDE.md` says stages 01-03 are reused as-is and not notebook-ified; this notebook
+# The project plan says stages 01-03 are reused as-is and not notebook-ified; this
+# notebook
 # is an additional interactive view, not a replacement. The CLI path still works:
 #
 # ```bash
@@ -133,7 +134,8 @@ else:
 # dataset, so it is worth seeing every time the manifest is rebuilt.
 #
 # The 62 samples were processed against **three different references**, identifiable by
-# the row count of `genes.tsv`. Expected (confirmed ground truth, `CLAUDE.md`):
+# the row count of `genes.tsv`. Expected (confirmed ground truth, per the main project
+# document):
 #
 # | genes | samples | note |
 # |---|---|---|
@@ -247,8 +249,8 @@ else:
 # the manifest's schema must stay byte-identical to what
 # `python scripts/03_build_manifest.py raw/samples` produces, or the notebook and the
 # CLI would silently disagree about the pipeline's own input contract. Persisting it
-# would mean adding the column to the script too — a change `CLAUDE.md` rules out for
-# stages 01-03. Stage 05 recomputes it cheaply from `genefeat_path`.
+# would mean adding the column to the script too — a change the project plan rules out
+# for stages 01-03. Stage 05 recomputes it cheaply from `genefeat_path`.
 SCRIPT_SCHEMA = [c for c in df.columns if c != "n_genes_ref"]
 df[SCRIPT_SCHEMA].to_csv(OUT_CSV, index=False)
 

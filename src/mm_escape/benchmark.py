@@ -93,7 +93,8 @@ INCUMBENT = "harmony_stage05"
 #:    innate lymphoid cells. Marker check: NKG7 98.7%, GNLY 92.2%, KLRD1 85.9%,
 #:    MS4A1 1.3%. `Immune_All_High` folds NK into its ILC class.
 #: 2. **`Immune_All_High` does cover erythroid and HSPC here**, contrary to the
-#:    expectation recorded in CLAUDE.md that an immune-only reference would be blind to
+#:    expectation recorded in the project plan that an immune-only reference would be
+#:    blind to
 #:    them — Erythroid 14,103 cells at HBB 99.7%, HSC/MPP 2,625 at CD34 58.4%. So no
 #:    hand-set marker override is needed, which keeps arbitrary thresholds out of the
 #:    benchmark entirely.

@@ -340,18 +340,33 @@ combination, or would a different pairing cover more of their disease?* And cove
 gets weighed against the normal-tissue expression from Stage F2 — covering 100% of the
 tumor isn't a win if the target is also all over healthy tissue.
 
-### Stage G — The decision packet
-A ranked table of patients by double-negative fraction — now with **error bars**, since
-a plain bar chart would claim a precision this measurement doesn't have — plus the
-target-coverage comparison, the "is it a subclone" score, the bulk-data cross-check, a
-few figures, and a short written interpretation.
+### Stage G — The final synthesis (run 2026-08-27; not a ranked table, by design)
+The plan going in was a ranked table of patients with error bars. What actually got
+built, once every upstream result was assembled and looked at together, is different and
+more defensible: a table with **six separate columns per patient** — is the measurement
+itself trustworthy, is the double-negative population structured, does it share a
+distinct gene program, is there genetic evidence for it, does the immune environment
+explain it, and how does target coverage compare across alternatives — plus a short list
+of exactly which claims the data does and doesn't support.
+
+The reason it isn't a ranked table: once those six columns were laid out side by side,
+the patients who looked most confident on the raw measurement and the patients who showed
+the clearest sign of a structured escape population turned out to be **different, non-
+overlapping patients**. Averaging those into one score would have hidden exactly that
+disagreement — which is a more useful and more honest finding than a clean-looking
+ranking would have been. So the deliverable stayed as six columns, plus a short list of
+which of twelve possible claims ("baseline escape exists," "there's a resistant
+subclone," "a different target pair would work better," and so on) the data actually
+supports — most of them don't, and saying so plainly is the point.
 
 It also states plainly what the analysis *can't* say. The biggest one: CAR-T therapy
 binds to **protein on the cell surface**, and this analysis measures **RNA inside the
 cell**. Those usually track each other, but not perfectly — and for BCMA specifically
 there's a known mechanism that actively strips the protein off the surface while the
-RNA stays put. That's the first thing a knowledgeable person will ask about, so it goes
-in the deliverable rather than waiting to be caught.
+RNA stays put. No published calibration between the two was available to fold into the
+numbers, so it stays a stated limitation rather than a corrected one — the first thing a
+knowledgeable person would ask about, answered directly instead of left for them to
+catch.
 
 ---
 
@@ -454,10 +469,15 @@ in the deliverable rather than waiting to be caught.
    patient as the unit of replication and immune-cell abundance controlled. Forty-one
    patients against hundreds of possible signaling pairs doesn't support a confirmatory
    claim, so I don't make one."
-8. "The output is per-patient risk *tiers* rather than a ranked list — the error bars
-   overlap too much for '#1, #2, #3' to be honest — with the co-escape and structure
-   results as separate columns, plus a coverage comparison across other candidate
-   targets in case a different pairing covers a given patient's disease better."
+8. "The final output is a six-column evidence table per patient, not a ranked list or
+   a single risk score — the error bars overlap too much for '#1, #2, #3' to be honest,
+   and when I laid out measurement confidence, structural evidence and phenotype
+   evidence side by side, they turned out to pick out *different* patients rather than
+   agreeing. Forcing that into one number would have hidden the disagreement, so I kept
+   the axes separate and stated plainly which of the twelve claims someone might want to
+   make from this data are actually supported — most aren't, including 'there's a
+   resistant genetic subclone' and 'a different target pair is better,' both of which I
+   can show are artifacts of measurement rather than real findings."
 
 ---
 

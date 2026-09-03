@@ -21,7 +21,8 @@
 #
 # ## Why `05b` and not `06`
 #
-# `CLAUDE.md`'s rule is that number order is execution order with no exceptions. This
+# The project plan's rule is that number order is execution order with no exceptions.
+# This
 # is a side-comparison feeding the stage-05 *choice*, not a new pipeline stage, so it
 # takes a letter rather than displacing annotation. It also **must not overwrite the
 # incumbent** — candidate embeddings live here until a winner is picked, and the last

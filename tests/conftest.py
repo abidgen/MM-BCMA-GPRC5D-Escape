@@ -42,7 +42,7 @@ requires_data = pytest.mark.skipif(
 )
 
 #: R lives only in `mm-qc` (scDblFinder) and `mm-annotation` (SingleR), on purpose —
-#: see CLAUDE.md's env split. The suite's home is `mm-core`, which carries no R at
+#: see the project's env split. The suite's home is `mm-core`, which carries no R at
 #: all, so R-backed tests skip there rather than failing.
 #:
 #: To actually exercise them you need pytest inside an R env. `pytest` is declared in

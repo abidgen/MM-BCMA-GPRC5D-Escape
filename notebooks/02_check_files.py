@@ -102,7 +102,7 @@ files_df.head(10)
 # %% [markdown]
 # ## Assertions
 #
-# Expected, per `CLAUDE.md`'s confirmed ground truth: **62 samples, all
+# Expected, per the main project document's confirmed ground truth: **62 samples, all
 # `triplet-ok`, zero `INCOMPLETE`.** An `INCOMPLETE` here means stage 01's extraction
 # did not finish — go back to `01_download_data.ipynb` rather than continuing, since
 # stage 03 would happily build a manifest with missing paths.

@@ -80,7 +80,7 @@ results/**/provisional_labels.csv
 # --- Notebooks ----------------------------------------------------------------
 # Notebooks are jupytext-paired (percent format). The paired `.py` is the
 # committed, reviewable artifact; the `.ipynb` is a local build product with
-# heavy embedded outputs. See CLAUDE.md's "Code structure" section.
+# heavy embedded outputs. See the project's "Code structure" section.
 #
 # To commit notebooks instead, delete the line below and install nbstripout
 # (`nbstripout --install`) so outputs are stripped on commit.

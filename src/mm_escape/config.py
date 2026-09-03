@@ -4,7 +4,8 @@ Project-wide constants: thresholds, gene sets, exclusions.
 STATUS: partial scaffold. Only the gene-space constants needed by `gene_space.py`
 are defined so far. QC thresholds
 and the antigen noise floor are added by the stages that derive them (04-08) — see
-CLAUDE.md. Do not duplicate any of these lists into a notebook; import from here.
+the main project document. Do not duplicate any of these lists into a notebook; import
+from here.
 
 Every value is env-var overridable via `_env()` (same convention as the R build's
 lib/00_config.R), so a notebook can override without editing source.
@@ -32,7 +33,7 @@ MANIFEST_CSV = RAW_DIR / "sample_manifest.csv"
 
 RESULTS_DIR = Path(_env("RESULTS_DIR", str(REPO_ROOT / "results")))
 
-#: Committed Ensembl-ID reconstruction (see gene_space.py and CLAUDE.md).
+#: Committed Ensembl-ID reconstruction (see gene_space.py and the main project document).
 GENE_SPACE_DIR = Path(_env("GENE_SPACE_DIR", str(REPO_ROOT / "resources" / "gene_space")))
 
 #: Per-sample GEO metadata parsed from the *_family.soft.gz files (see io.py). Holds
@@ -98,7 +99,7 @@ EXCLUDED_SAMPLES: frozenset[str] = frozenset()
 #: 33694-build matrix. `TNFRSF17` (canonical row 25539) and `IGLC1/2/3` (rows
 #: 32548-32552) were not absent from a reference; they were past the cut.
 #:
-#: (The "22184 genes" in earlier versions of CLAUDE.md is a `wc -l` artifact — the
+#: (The "22184 genes" in earlier versions of the project plan is a `wc -l` artifact — the
 #: file has no trailing newline, so `wc -l` undercounts by one. There are 22185 rows.)
 #:
 #: The repair is provable rather than a guess: substitute the canonical symbols for
@@ -226,7 +227,8 @@ LEGACY_SYMBOLS: dict[str, str] = {
 #: These seven are the ONLY load-bearing identity labels in the project. Everything
 #: downstream reads `obs["cell_type"]`, which takes exactly these values (plus
 #: `Ambiguous`). Fine subtypes live in `cell_type_fine` and are never load-bearing.
-#: REVISED FOR v2 (2026-08-25) — see the stage 06 v1->v2 entry in CLAUDE.md. The v1
+#: REVISED FOR v2 (2026-08-25) — see the stage 06 v1->v2 entry in the main project
+#: document. The v1
 #: panel produced NK = 33,556 against Tcell = 19,133 in bone marrow, which is not
 #: credible. Two definitional defects, both fixed here from lineage biology rather
 #: than by tuning against the misassigned clusters:
@@ -254,7 +256,7 @@ MARKER_PANEL: dict[str, tuple[str, ...]] = {
 }
 
 #: The label used when no class wins cleanly. Recorded as ambiguous rather than forced
-#: into a class — CLAUDE.md is explicit that forcing is the error to avoid.
+#: into a class — the project plan is explicit that forcing is the error to avoid.
 AMBIGUOUS_LABEL = "Ambiguous"
 
 #: Per-class concordance bars, **declared before looking at any result**. Pre-declaring
@@ -322,7 +324,8 @@ STATE_PROGRAMS: dict[str, tuple[str, ...]] = {
                "UQCRQ", "ATP5F1E", "ATP5MC2", "SDHB"),
     # Stage 10 Level-2 stress tone: heat-shock plus immediate-early.
     "stress": ("HSPA1A", "HSPA1B", "HSPB1", "DNAJB1", "JUN", "FOS", "EGR1"),
-    # PRE-REGISTERED before any stage-10 biology was inspected (see CLAUDE.md stage 10).
+    # PRE-REGISTERED before any stage-10 biology was inspected (see the stage 10 block of
+    # the main project document).
     # gamma-secretase cleaves BCMA off the cell surface, so a gamma-secretase-high escape
     # phenotype would be directly actionable. EXACTLY these five genes: no gene may be
     # added after seeing a result, and no single member may carry the claim alone.
@@ -378,7 +381,8 @@ LEVEL2_PROGRAMS: tuple[str, ...] = (
 #: deliberate, pre-existing decision rather than an accident of marker membership:
 #: `annotation.CELLTYPIST_TO_BROAD` has mapped "pDC" -> "Myeloid" since stage 06 v1,
 #: and `benchmark.py` does the same. What changes here is only that the MANUAL
-#: reference stops being blind to pDC. CLAUDE.md previously described pDC as a
+#: reference stops being blind to pDC. The main project document previously described
+#: pDC as a
 #: population "the seven-class panel does not cover" — true of the old flat panel,
 #: no longer true of this one, and updated there accordingly.
 #: Broad Myeloid has THREE INDEPENDENT ROUTES. Any one coherent route suffices; there

@@ -227,7 +227,7 @@ def test_ilc_maps_to_nk():
 
 
 def test_mapping_covers_every_broad_class_including_the_expected_blind_spots():
-    """CLAUDE.md expected an immune-only reference to miss erythroid and HSPC.
+    """The project plan expected an immune-only reference to miss erythroid and HSPC.
 
     On this cohort it does not — Erythroid 14,103 cells at HBB 99.7%, HSC/MPP 2,625 at
     CD34 58.4% — so no hand-set marker override is needed and no arbitrary threshold

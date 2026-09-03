@@ -244,7 +244,7 @@ def test_haemoglobin_match_does_not_catch_HBEGF(samples):
 def test_the_deposit_is_pre_filtered_and_differently_per_cohort(samples):
     """CORRECTS an earlier claim: the depositors' 10,000-UMI cut WAS applied.
 
-    CLAUDE.md said their stated QC "demonstrably was not applied to what is
+    The project plan said their stated QC "demonstrably was not applied to what is
     deposited", reasoning from a cohort-wide UMI average. That average pooled MMRF
     (42% of cells above 10k) with WashU (0% above 10k) and hid a per-cohort truth.
     What the files actually show:

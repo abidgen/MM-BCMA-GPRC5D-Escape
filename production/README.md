@@ -56,10 +56,14 @@ Every one of the 293 frozen Stage 06–11 artifacts resolves to a producer. The 
 > **notebook `08c`**, the supplemental multi-antigen coverage arm, which is committed at
 > `notebooks/08c_multi_antigen_coverage.py` and is not part of this recovery.
 
-Stages **11**, **11b** and **08c** are not recovered here: their producers were already
-committed as executable notebooks (`notebooks/11_immune_context.py`,
-`notebooks/11b_liana_verification.py`, `notebooks/08c_multi_antigen_coverage.py`). The
-freeze manifest still records their artifacts and points at those notebooks.
+Stages **11**, **11b**, **08c** and **12** are not recovered here: their producers were
+committed as executable notebooks from the start
+(`notebooks/11_immune_context.py`, `notebooks/11b_liana_verification.py`,
+`notebooks/08c_multi_antigen_coverage.py`, `notebooks/12_final_synthesis.py`). The freeze
+manifest records the artifacts for 11/11b/08c and points at those notebooks; Stage 12
+(run 2026-08-27, after this recovery pass) consumed the manifest as an input rather than
+contributing rows to it — see `provenance/README.md` for what that means for Stage 12's
+own outputs.
 
 ## Reading order
 

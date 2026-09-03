@@ -1,7 +1,7 @@
 # Environments — full specifications and build history
 
-Detail split out of `CLAUDE.md` on 2026-08-24 to keep that file under its size
-budget. `CLAUDE.md` keeps the env→stage table and the two hard rules; everything
+Detail split out of the main project document on 2026-08-24 to keep that file under its
+size budget. That document keeps the env→stage table and the two hard rules; everything
 below is the full record. **Five environments are built; six YAML specifications exist** —
 `envs/env-composition.yml` (scCODA) is written but deliberately not built. The five built
 bodies follow, what the channels actually

@@ -1,5 +1,12 @@
 # Pre-Stage-12 Codex audit
 
+> **Editorial note, added after the fact:** this audit is preserved verbatim as a
+> historical record — it reflects the repository's state on 2026-08-26, before
+> remediation. Its findings were closed in `docs/pre_stage12_audit_remediation.md` and
+> confirmed by `docs/pre_stage12_codex_reaudit.md`; Stage 12 subsequently ran to
+> completion on 2026-08-27 (`results/12_final_synthesis/`). Nothing below has been
+> edited to match that outcome.
+
 Audit date: 2026-08-26  
 Scope: read-only scientific/software audit of the repository at `4a2b809` (`main`) and the locally present ignored artifacts under `results/`. Stage 12 was not started and no analysis result, threshold, state, or tier was changed.
 
@@ -218,7 +225,7 @@ Important untested/weakly tested claims:
 ## Documentation inconsistencies
 
 1. **Stale notebook/result names:** `README.md:232-237` and `mm_dual_antigen_escape_pipeline.md:323,374,530,584,654` refer to nonexistent `07_malignant_calling`, `08_antigen_escape_fraction`, `09_escape_robustness`, `10_escape_subclone_phenotype`, and `11_cellchat_liana` notebooks/result directories. **MEDIUM — documentation/reproducibility issue.** Replace only after audit acceptance.
-2. **Contradictory Jupytext instruction:** `CLAUDE.md:410-414` forbids `jupytext --sync`, but `CLAUDE.md:441-442` says it keeps pairs in lockstep and instructs re-syncing. **MEDIUM — documentation issue.** Remove the stale instruction; explicit `.py → .ipynb` conversion is the accepted direction.
+2. **Contradictory Jupytext instruction:** the main project document forbids `jupytext --sync` at lines 410-414, but at lines 441-442 says it keeps pairs in lockstep and instructs re-syncing. **MEDIUM — documentation issue.** Remove the stale instruction; explicit `.py → .ipynb` conversion is the accepted direction.
 3. **Stage-results title:** `docs/stage-results.md:1` says “stages 01 through 05b” although it contains 06–11b/08c. **LOW — documentation issue.** Update title.
 4. **Environment count phrasing:** `docs/environments.md` begins “Five environments exist” and later describes five built plus one written/unbuilt composition spec. The intended built count is recoverable but easy to misread. **LOW — documentation issue.** State “five built, six YAML specifications.”
 5. **Source-of-truth contradiction:** docs call `results/*.csv` the source of truth while all results are ignored/untracked and several have no committed producer. **MEDIUM — documentation/provenance issue.** Define an archival source of truth rather than only a local path.

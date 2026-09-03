@@ -3,7 +3,7 @@
 # manifest — envs/*.yml is. `dependencies` is deliberately EMPTY, and the install is
 # always `pip install -e . --no-deps`, because letting pip resolve anything into these
 # envs is what silently downgraded numpy 2.5.2 -> 1.26.4 during setup and broke
-# scanpy/scipy/pydeseq2/zarr at once. See CLAUDE.md's Environment section.
+# scanpy/scipy/pydeseq2/zarr at once. See the project's Environment section.
 #
 #   conda run -n mm-qc pip install -e . --no-deps      # and mm-core, mm-annotation,
 #                                                      # mm-communication as needed

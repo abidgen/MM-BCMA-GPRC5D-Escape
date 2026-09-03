@@ -1,5 +1,11 @@
 # Focused pre-Stage-12 Codex re-audit
 
+> **Editorial note, added after the fact:** this re-audit cleared Stage 12 to begin
+> ("safe to begin, with non-blocking caveats"). Stage 12 subsequently ran to completion
+> on 2026-08-27 (`results/12_final_synthesis/`, design in `docs/stage12_design.md`).
+> This document is preserved verbatim as the historical checkpoint record and has not
+> been edited to reflect that outcome.
+
 Audit date: 2026-08-26  
 Repository: `/media/wrath/CART_mm_dual_antigen`  
 Audited commit: `ea26a949c40bc070c1cf4983ea936252fa36d145`  
@@ -60,7 +66,7 @@ number or patient-level result.
 | H2 — Level-2 validation / semantics | HIGH / open | **RESOLVED** | `src/mm_escape/subclone.py:validate_program_names()` binds to `config.LEVEL2_PROGRAMS`; `level2_state()` validates before every branch. `tests/test_production_paths.py:test_a1`-`test_a6` call the behavior. Frozen states remain unchanged. | No |
 | Pseudobulk behavioral-test weakness | MEDIUM / open | **RESOLVED WITH TEST-SCOPE CAVEAT** | `tests/test_pseudobulk_production.py` uses synthetic counts and the same committed binning/matching primitives to demonstrate one row per patient/group, repeated-sample pooling, pre-sum matching, antigen removal before normalization, and deterministic seeds. It reproduces the recovered loop rather than importing the top-level producer; several linkage guards are source inspection. | No |
 | Tautological Level-2 test | MEDIUM / open | **RESOLVED** | Tests now pass invented and plausible-but-unfrozen names to the runtime function and require `UnknownProgramError`, including the not-evaluable branch. | No |
-| Documentation/source-of-truth contradictions | MEDIUM / open | **MOSTLY RESOLVED** | `CLAUDE.md` and `docs/stage-results.md` now explain committed code + manifest + ignored/archived artifacts and explicit checksum verification; Jupytext direction, title, notebook names, and environment count were corrected. One stale sentence remains in the main pipeline narrative. | No |
+| Documentation/source-of-truth contradictions | MEDIUM / open | **MOSTLY RESOLVED** | The main project document and `docs/stage-results.md` now explain committed code + manifest + ignored/archived artifacts and explicit checksum verification; Jupytext direction, title, notebook names, and environment count were corrected. One stale sentence remains in the main pipeline narrative. | No |
 
 ## Production-driver recovery assessment
 
@@ -356,9 +362,9 @@ Non-blocking corrections recommended before public final reporting:
 - update the 197 placeholder producer-commit entries without changing artifact hashes;
 - correct pydeseq2/`~ patient + group` wording to the implemented paired Wilcoxon method;
 - correct `mm_dual_antigen_escape_pipeline.md:35`, which still says ignored CSVs alone
-  are “the source of truth.” The accurate rule already present in `CLAUDE.md` and
-  `docs/stage-results.md` is that frozen local/archived artifacts are authoritative only
-  after matching the committed manifest; and
+  are “the source of truth.” The accurate rule already present in the main project
+  document and `docs/stage-results.md` is that frozen local/archived artifacts are
+  authoritative only after matching the committed manifest; and
 - provision immutable external storage when available and record its versioned pointer
   plus the manifest's own digest.
 

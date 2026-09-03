@@ -1,13 +1,13 @@
 # Decisions archive — superseded positions and how the plan evolved
 
-Split out of `CLAUDE.md` on 2026-08-24. `CLAUDE.md` states the **current** position
-only, one line per decision. This file keeps what each position replaced and why, so a
-reversal is auditable and a settled question is not accidentally re-opened from an
-older draft.
+Split out of the main project document on 2026-08-24. That document states the
+**current** position only, one line per decision. This file keeps what each position
+replaced and why, so a reversal is auditable and a settled question is not accidentally
+re-opened from an older draft.
 
 **Nothing in this file is an instruction.** Every position recorded here as "the old
-reading" is wrong or obsolete. If this file and `CLAUDE.md` disagree, `CLAUDE.md` is
-current.
+reading" is wrong or obsolete. If this file and the main project document disagree, that
+document is current.
 
 ---
 
@@ -95,7 +95,8 @@ so the veto triggers only when contradictory evidence affects a substantial frac
 the assigned class. Recorded here because correcting a justification after a run has
 started is exactly the kind of edit that must be visible rather than quiet.
 
-**What v2 changes** (all fixed in `config.py` and `CLAUDE.md` before v2 was run):
+**What v2 changes** (all fixed in `config.py` and the main project document before v2
+was run):
 revised `MARKER_PANEL` for Erythroid, Tcell and NK from lineage biology; new
 `LINEAGE_PROGRAMS`, `CONTRADICTION_PAIRS`, `CONTRADICTION_MIN_GENES = 2` and
 `CONTRADICTION_MAX_RATE = 0.25`; and the fallback subjected to both vetoes.
@@ -207,9 +208,9 @@ Artifacts: `results/06_annotation/cluster23_local/trbc_context_revision/`.
 ## The design reviews, verbatim
 
 These describe how the plan changed. The resulting rules are restated at each stage in
-`CLAUDE.md`; they are kept here because the *reasoning* is what stops a settled
-question being re-opened. Two figures below were corrected after the fact and are
-annotated inline.
+the main project document; they are kept here because the *reasoning* is what stops a
+settled question being re-opened. Two figures below were corrected after the fact and
+are annotated inline.
 
 ### First design review — scope expansion, 2026-08-20
 

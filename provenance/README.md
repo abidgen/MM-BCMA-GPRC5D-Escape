@@ -100,6 +100,18 @@ NUMBA_CACHE_DIR=/tmp/mm_numba_cache conda run -n mm-core \
 A changed hash means a frozen artifact mutated, which is exactly the event this record
 exists to detect. Report it before doing anything else.
 
+## Stage 12 outcome (added after the fact)
+
+Stage 12 ran on 2026-08-27 (commit `5bbecbc`) and, per its own predeclared protocol in
+`docs/stage12_design.md`, hash-verified every one of the 29 inputs below against this
+manifest **before** reading them, aborting on any mismatch — none occurred. Stage 12's
+own outputs (`results/12_final_synthesis/`) are not themselves rows in
+`frozen_artifacts_pre_stage12.tsv`, since that manifest was built and named for the
+pre-Stage-12 checkpoint; they postdate it by construction. This is a scope fact about
+the manifest's name, not a gap in Stage 12's provenance discipline — Stage 12 verified
+against exactly this file, and its own design document and summary are the durable
+record of what it read and produced.
+
 ## Which artifacts Stage 12 requires
 
 Stage 12 consumes five evidence layers plus the bias table. The manifest rows below are

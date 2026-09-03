@@ -145,7 +145,7 @@ def naive_patient_id(sample_name: str) -> str:
     reported 41 / 53, so roughly two name collapses are still being missed
     (`83942` / `MMY83942` is the obvious candidate). Do NOT hand-fix those here —
     guessing a patient mapping silently changes the denominator of the headline
-    metric. Resolve against Supplementary Table S1; see CLAUDE.md's S1 policy.
+    metric. Resolve against Supplementary Table S1; see the project's S1 policy.
 
     The `_N` suffixes are also of *unknown meaning* (timepoint vs. fraction vs. sort
     vs. replicate) — the bulk/sc suffix misalignment is evidence against the naive
@@ -397,7 +397,7 @@ def rebuild_clinical_metadata_from_s1(
        Remission-1, `_3` Relapse-1, `_4` Relapse-2, `_5` Remission-2, `_6`
        Relapse-3. They are serial disease-course timepoints, which is what the
        2026-08-24 bulk/scRNA suffix argument had inferred and this confirms
-       outright. The longitudinal arm in CLAUDE.md is real, not speculative.
+       outright. The longitudinal arm in the project plan is real, not speculative.
        It also explains the lone non-`_1` samples: `37692_2` and `57075_3` are later
        timepoints whose earlier draws were simply not deposited.
 

@@ -121,8 +121,8 @@ def test_sequencing_depth_tracks_cohort_not_chemistry_version(manifest):
     """The confounder, asserted so a regression in the metadata join is visible.
 
     MMRF cells carry ~1.9x the genes of WashU 1's. Note v2-vs-v3 alone is only 1.38x
-    with overlapping distributions -- the separation follows cohort, and CLAUDE.md
-    says not to quote a 2-3x chemistry effect.
+    with overlapping distributions -- the separation follows cohort, and the project
+    plan says not to quote a 2-3x chemistry effect.
     """
     medians: dict[str, list[float]] = {}
     for adata in io.read_samples(manifest=manifest, verbose=False):

@@ -1,6 +1,7 @@
 # Stage 05b only — the integration-method benchmark.
 #
-# CLAUDE.md reserved an env for this ("If scVI-based integration is ever considered as
+# The project plan reserved an env for this ("If scVI-based integration is ever
+# considered as
 # an alternative to Harmony, it gets its own separate env (env-scvi.yml) — not created
 # yet, only if actually needed"). It is needed now, but it is named for what it holds
 # rather than for one of its members: EVERY integration method under comparison lives

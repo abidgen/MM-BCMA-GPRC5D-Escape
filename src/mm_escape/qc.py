@@ -178,7 +178,7 @@ def mad_thresholds(
 
     `flag_outliers` could compute the masks without materialising this, but then the
     thresholds this cohort actually produces would exist only inside a boolean array.
-    CLAUDE.md requires them written down, so they are returned as data: one row per
+    The project plan requires them written down, so they are returned as data: one row per
     metric with `median`, `mad`, `lower`, `upper` and how many cells each side drops.
     """
     rows = []
@@ -413,7 +413,7 @@ def detect_doublets(
     """Run scDblFinder on one sample and write `doublet_score` / `doublet_class`.
 
     Requires the `mm-qc` environment — R, rpy2 and bioconductor-scdblfinder live
-    there and nowhere else, deliberately (see CLAUDE.md's env split). Raises
+    there and nowhere else, deliberately (see the project's env split). Raises
     `DoubletDetectionError` rather than returning empty results, because a sample
     that was never screened must not look like a clean one.
 

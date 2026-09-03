@@ -26,8 +26,8 @@
 # zeros**: any filter that preferentially keeps or drops shallow cells moves it
 # directly, and in a direction that reads as biology.
 #
-# So three things are done differently from the default recipe, all settled in
-# `CLAUDE.md` before this notebook was written:
+# So three things are done differently from the default recipe, all settled in the main
+# project document before this notebook was written:
 #
 # 1. **Thresholds are derived per cohort, never pooled.** The four cohorts differ by
 #    ~1.9x in genes detected per cell. A pooled MAD would filter WashU cohort 1 — 23
@@ -124,7 +124,8 @@ print(f"{len(obs):,} cells over {obs['sample_name'].nunique()} samples")
 # %% [markdown]
 # ## The deposit is already filtered — differently in each cohort
 #
-# **This corrects a claim carried in `CLAUDE.md` until this notebook was run.** That
+# **This corrects a claim carried in the main project document until this notebook was
+# run.** That
 # claim was that the depositors' stated 10,000-UMI cut "demonstrably was not applied
 # to what is deposited", reasoned from a cohort-wide average UMI count. The average
 # pooled MMRF with WashU and hid a per-cohort truth. Read per cohort, the boundaries
@@ -310,7 +311,7 @@ fig.savefig(FIGURES / "qc_metric_distributions.png", dpi=150)
 #
 # The second thing this cohort forced a departure on. In most tissues a library
 # dominated by a handful of transcripts means an empty-ish droplet full of ambient
-# soup, and a MAD filter on this metric is standard. `CLAUDE.md` specified it as one
+# soup, and a MAD filter on this metric is standard. The project plan specified it as one
 # of the three MAD metrics, and it was implemented that way — then the numbers came
 # back:
 
@@ -378,7 +379,8 @@ display(pd.DataFrame(marker_rows).round(2))
 # to delete cells. The erythroid half is what `pct_counts_hb` is for, and properly
 # belongs to stage 06's annotation rather than to a blanket QC cut.
 #
-# This is a documented deviation from `CLAUDE.md`'s stage-04 specification, made on
+# This is a documented deviation from the main project document's stage-04
+# specification, made on
 # this cohort's own numbers — which is exactly what that specification asked for
 # when it said to recompute rather than copy.
 

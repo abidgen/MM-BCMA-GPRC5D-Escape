@@ -32,7 +32,8 @@
 #
 # What this notebook adds on top of the script: a **pre-flight** that says whether
 # this run will download or skip (so nobody starts a 1 GB transfer by accident), and
-# **post-conditions** checked against the counts `CLAUDE.md` records as ground truth.
+# **post-conditions** checked against the counts the main project document records as
+# ground truth.
 #
 # ## Safe to re-run
 #
@@ -64,8 +65,8 @@ SCRIPT = ROOT / "scripts" / "01_download_data.sh"
 RAW_DIR = ROOT / "raw"
 SAMPLES_DIR = RAW_DIR / "samples"
 
-# Set to "0" to skip the GSE223061 bulk archive. Keep it on: CLAUDE.md promotes the
-# bulk data from "optional" to the stage 09 orthogonal validation set.
+# Set to "0" to skip the GSE223061 bulk archive. Keep it on: the project plan promotes
+# the bulk data from "optional" to the stage 09 orthogonal validation set.
 DOWNLOAD_BULK = "1"
 
 print("repo root :", ROOT)
@@ -149,8 +150,8 @@ assert rc == 0, f"scripts/01_download_data.sh failed with exit code {rc}"
 # %% [markdown]
 # ## Post-conditions
 #
-# The script reports its own counts; this checks them against what `CLAUDE.md`
-# records as confirmed ground truth, so a partial extraction fails here rather than
+# The script reports its own counts; this checks them against what the main project
+# document records as confirmed ground truth, so a partial extraction fails here rather than
 # surfacing as a confusing error in stage 04.
 #
 # **Expected: 62 sample directories, each with a completion marker.** 62 rather than
@@ -215,7 +216,8 @@ for path in sorted(first.rglob("*")):
 #   S1 (do not guess these pairings): bulk `47499` vs sc `47491_1`/`47491_2`; bulk
 #   `98433` vs sc `MMY98423`; bulk `59114_2` vs sc `59114_1`/`59114_4`.
 #
-# **Inventory corrected 2026-08-21.** `CLAUDE.md` recorded "18 MMRF + 12 WashU = 30
+# **Inventory corrected 2026-08-21.** The main project document recorded "18 MMRF + 12
+# WashU = 30
 # usable". The archive actually holds **13** WashU `.tar.gz` (GSM6939090-102, all
 # 4.5-5.4 MB) and 18 MMRF TPM tables (GSM6939103-120), so after excluding the two
 # stubs the usable count is **29**, not 30. The assertion below pins the corrected

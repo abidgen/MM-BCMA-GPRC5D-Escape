@@ -274,7 +274,8 @@ display(membership.round(3))
 #    plasma cell; `MZB1`, `SDC1` and `TNFRSF17` all made the cut.
 # 2. **It does not affect stage 08 at all**, because antigen calls read
 #    `layers["counts"]`, never the HVG set or the embedding.
-# 3. **It is evidence, and it is the useful part.** `CLAUDE.md` argues repeatedly that
+# 3. **It is evidence, and it is the useful part.** The project plan argues repeatedly
+#    that
 #    dropout matters more for GPRC5D than for BCMA because GPRC5D is a low-abundance
 #    GPCR transcript. That has been an assertion from the literature; this is the
 #    first number from *this cohort* supporting it. An 8x lower mean means a
